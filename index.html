@@ -407,11 +407,11 @@
                             </div>
                         ))}
                     </div>
-                    <Modal isOpen={isModalOpen} onClose={reset} title={editingTourney ? "Modifier Tournoi" : "Nouveau Tournoi"} maxWidth="max-w-5xl"
+                    <Modal isOpen={isModalOpen} onClose={reset} title={editingTourney ? "Modifier Tournoi" : "Nouveau Tournoi"} maxWidth="max-w-3xl"
                         footer={<><button type="button" onClick={reset} className="text-gray-500 hover:text-gray-800 text-sm font-bold px-4 py-2">Annuler</button><button type="submit" form="tourneyForm" className="bg-[#D35400] hover:bg-[#A04000] text-white px-8 py-2.5 rounded-lg shadow-sm font-bold text-[11px] uppercase tracking-wider">{editingTourney ? "Sauver" : "Générer"} ({count})</button></>}>
                         <form id="tourneyForm" onSubmit={handleSubmit} className="flex flex-col gap-5">
-                            <div className="flex flex-col md:flex-row gap-5">
-                                <div className="w-full md:w-1/4 flex flex-col gap-2">
+                            <div className="flex flex-col gap-4">
+                                <div className="flex flex-row items-center gap-4">
                                     <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Affiche / Logo</h4>
                                     <label className="relative cursor-pointer border-2 border-dashed border-gray-300 rounded-xl h-32 flex flex-col items-center justify-center hover:bg-gray-50 overflow-hidden group transition-all bg-gray-50/50">
                                         {formData.logo ? <img src={formData.logo} className="w-full h-full object-cover" /> : <div className="text-gray-400 flex flex-col items-center gap-2"><Icons.Image /><span className="text-xs font-semibold">Ajouter</span></div>}
