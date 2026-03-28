@@ -126,7 +126,8 @@
 
         const H = {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${IF_KEY}`
+            "Authorization": `Bearer ${IF_KEY}`,
+            "Prefer": "return=representation"
         };
 
         const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -150,11 +151,13 @@
             createPlayer: async (data) => {
                 const id = generateId();
                 await db("players", "POST", { id, first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, points: 0, gender: data.gender || 'M' });
-                return { id, firstName: data.firstName, lastName: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, points: 0, gender: data.gender || 'M' };
+                const rows = await db(`players?id=eq.${id}`);
+                return mapPlayer(rows[0]);
             },
             updatePlayer: async (id, data) => {
                 await db(`players?id=eq.${id}`, "PATCH", { first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, gender: data.gender || 'M' });
-                return { firstName: data.firstName, lastName: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, gender: data.gender || 'M' };
+                const rows = await db(`players?id=eq.${id}`);
+                return mapPlayer(rows[0]);
             },
             deletePlayer: async (id) => db(`players?id=eq.${id}`, "DELETE"),
             getTournaments: async () => (await db("tournaments")).map(mapTournament),
@@ -163,17 +166,19 @@
                 if (data.participantIds.length === 4 && data.type === 'Double') bSize = 2;
                 const id = generateId();
                 await db("tournaments", "POST", { id, name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracket_size: bSize, participant_ids: data.participantIds, year: data.year });
-                const t = { id, name: data.name, startDate: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracketSize: bSize, participantIds: data.participantIds, year: data.year };
+                const rows = await db(`tournaments?id=eq.${id}`);
+                const t = mapTournament(rows[0]);
                 const mp = [];
-                for (let r = 0; r < Math.log2(bSize); r++)
-                    for (let i = 0; i < (bSize / Math.pow(2, r + 1)); i++)
+                for (let r = 0; r < Math.log2(t.bracketSize); r++)
+                    for (let i = 0; i < (t.bracketSize / Math.pow(2, r + 1)); i++)
                         mp.push(db("matches", "POST", { id: generateId(), tournament_id: t.id, round: r, index: i, p1_ids: [], p2_ids: [], scores: [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winner_id: null, status: 'pending', date: '', time: '', court: '' }));
                 await Promise.all(mp);
                 return t;
             },
             updateTournament: async (id, data) => {
                 await db(`tournaments?id=eq.${id}`, "PATCH", { name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: data.status, participant_ids: data.participantIds });
-                return { name: data.name, startDate: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: data.status, participantIds: data.participantIds };
+                const rows = await db(`tournaments?id=eq.${id}`);
+                return mapTournament(rows[0]);
             },
             deleteTournament: async (id) => {
                 await db(`matches?tournament_id=eq.${id}`, "DELETE");
