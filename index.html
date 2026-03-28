@@ -697,11 +697,33 @@ const App = () => {
 
     const tViews = {
         ranking: <RankingView players={players} matches={matches} tournaments={tournaments} year={selectedYear} onOpenStats={setStatsPlayer} />,
-        players: <PlayersManager players={players} isAdmin={isAdmin}
-            onAddPlayer={async d => { setPlayers([...players, await InsForgeAPI.createPlayer(d)]); showT("Ajouté"); }}
-            onUpdatePlayer={async (id, d) => { const up = await InsForgeAPI.updatePlayer(id, d); setPlayers(players.map(p => p.id === id ? up : p)); showT("Modifié"); }}
-            onDeletePlayer={async id => { await InsForgeAPI.deletePlayer(id); setPlayers(players.filter(p => p.id !== id)); showT("Supprimé"); }}
-            onOpenStats={setStatsPlayer} />,
+        players: <PlayersManager 
+    players={players} 
+    isAdmin={isAdmin}
+    onAddPlayer={async (d) => { 
+        try {
+            const newPlayer = await InsForgeAPI.createPlayer(d);
+            // On ajoute le nouveau joueur à la liste existante pour forcer le refresh
+            setPlayers(prevPlayers => [...prevPlayers, newPlayer]); 
+            showT("Joueur ajouté avec succès !");
+        } catch (e) {
+            showT("Erreur lors de l'ajout", 5000);
+        }
+    }}
+    onUpdatePlayer={async (id, d) => { 
+        const updatedPlayer = await InsForgeAPI.updatePlayer(id, d);
+        // On remplace l'ancien joueur par le nouveau dans l'état
+        setPlayers(prevPlayers => prevPlayers.map(p => p.id === id ? updatedPlayer : p)); 
+        showT("Profil modifié");
+    }}
+    onDeletePlayer={async (id) => { 
+        await InsForgeAPI.deletePlayer(id);
+        // On filtre la liste pour enlever le joueur supprimé
+        setPlayers(prevPlayers => prevPlayers.filter(p => p.id !== id)); 
+        showT("Joueur supprimé");
+    }}
+    onOpenStats={setStatsPlayer} 
+/>,
         tournaments: <TournamentsManager tournaments={tournaments.filter(t => t.year === selectedYear)} players={players} year={selectedYear} isAdmin={isAdmin}
             onCreate={async d => { setTournaments([...tournaments, await InsForgeAPI.createTournament(d)]); setMatches(await InsForgeAPI.getMatches()); showT("Créé"); }}
             onUpdate={async (id, d) => { const up = await InsForgeAPI.updateTournament(id, d); setTournaments(tournaments.map(t => t.id === id ? up : t)); showT("Modifié"); }}
@@ -710,8 +732,12 @@ const App = () => {
         brackets: viewTourney ?
             <BracketView tournament={tournaments.find(t => t.id === viewTourney)} matches={matches} players={players} ranks={buildRanks()} isAdmin={isAdmin}
                 onMatchUpdate={async m => { setMatches(await InsForgeAPI.updateMatch(m)); showT("Score sauvé"); }}
-                onDraw={async (tid, parts, type, size, rks) => { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); }}
-                goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
+onDraw={async (tid, parts, type, size, rks) => { 
+    const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); 
+    setTournaments(t); // Mise à jour de l'état des tournois
+    setMatches(m);     // Mise à jour de l'état des matchs
+    showT("Arbre généré et affiché !"); 
+}}                goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
             : <div className="animate-enter space-y-6">
                 <h2 className="text-xl font-heading font-bold">Sélectionnez un tableau ({selectedYear})</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
