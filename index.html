@@ -700,19 +700,19 @@
             const tViews = {
                 ranking: <RankingView players={players} matches={matches} tournaments={tournaments} year={selectedYear} onOpenStats={setStatsPlayer} />,
                 players: <PlayersManager players={players} isAdmin={isAdmin}
-                    onAddPlayer={async d => { const np = await InsForgeAPI.createPlayer(d); setPlayers(prev => [...prev, np]); showT("Ajouté"); }}
-                    onUpdatePlayer={async (id, d) => { const up = await InsForgeAPI.updatePlayer(id, d); setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...up } : p)); showT("Modifié"); }}
-                    onDeletePlayer={async id => { await InsForgeAPI.deletePlayer(id); setPlayers(prev => prev.filter(p => p.id !== id)); showT("Supprimé"); }}
+                    onAddPlayer={async d => { try { const np = await InsForgeAPI.createPlayer(d); setPlayers(prev => [...prev, np]); showT("Ajouté"); } catch(e) { console.error(e); showT("Erreur (ajout)", "error"); } }}
+                    onUpdatePlayer={async (id, d) => { try { const up = await InsForgeAPI.updatePlayer(id, d); setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...up } : p)); showT("Modifié"); } catch(e) { console.error(e); showT("Erreur (modif)", "error"); } }}
+                    onDeletePlayer={async id => { try { await InsForgeAPI.deletePlayer(id); setPlayers(prev => prev.filter(p => p.id !== id)); showT("Supprimé"); } catch(e) { console.error(e); showT("Erreur (suppr)", "error"); } }}
                     onOpenStats={setStatsPlayer} />,
                 tournaments: <TournamentsManager tournaments={tournaments.filter(t => t.year === selectedYear)} players={players} year={selectedYear} isAdmin={isAdmin}
-                    onCreate={async d => { const nt = await InsForgeAPI.createTournament(d); setTournaments(prev => [...prev, nt]); const nm = await InsForgeAPI.getMatches(); setMatches(nm); showT("Créé"); }}
-                    onUpdate={async (id, d) => { const up = await InsForgeAPI.updateTournament(id, d); setTournaments(prev => prev.map(t => t.id === id ? { ...t, ...up } : t)); showT("Modifié"); }}
-                    onDelete={async id => { await InsForgeAPI.deleteTournament(id); setTournaments(prev => prev.filter(t => t.id !== id)); showT("Supprimé"); }}
+                    onCreate={async d => { try { const nt = await InsForgeAPI.createTournament(d); setTournaments(prev => [...prev, nt]); const nm = await InsForgeAPI.getMatches(); setMatches(nm); showT("Créé"); } catch(e) { console.error(e); showT("Erreur (tournoi)", "error"); } }}
+                    onUpdate={async (id, d) => { try { const up = await InsForgeAPI.updateTournament(id, d); setTournaments(prev => prev.map(t => t.id === id ? { ...t, ...up } : t)); showT("Modifié"); } catch(e) { console.error(e); showT("Erreur (modif)", "error"); } }}
+                    onDelete={async id => { try { await InsForgeAPI.deleteTournament(id); setTournaments(prev => prev.filter(t => t.id !== id)); showT("Supprimé"); } catch(e) { console.error(e); showT("Erreur (suppr)", "error"); } }}
                     onSelectTourney={id => { setViewTourney(id); setActiveTab('brackets'); }} />,
                 brackets: viewTourney ?
                     <BracketView tournament={tournaments.find(t => t.id === viewTourney)} matches={matches} players={players} ranks={buildRanks()} isAdmin={isAdmin}
-                        onMatchUpdate={async m => { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); showT("Score sauvé"); }}
-                        onDraw={async (tid, parts, type, size, rks) => { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); }}
+                        onMatchUpdate={async m => { try { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); showT("Score sauvé"); } catch(e) { showT("Erreur", "error"); } }}
+                        onDraw={async (tid, parts, type, size, rks) => { try { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); } catch(e) { showT("Erreur génération", "error"); } }}
                         goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
                     : <div className="animate-enter space-y-6">
                         <h2 className="text-xl font-heading font-bold">Sélectionnez un tableau ({selectedYear})</h2>
