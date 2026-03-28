@@ -116,678 +116,654 @@
 <body class="court-bg min-h-screen">
     <div id="root"></div>
     <script type="text/babel">
-     const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo } = React;
 
-// ==========================================
-// 1. INSFORGE API
-// ==========================================
-const IF_URL = "https://879ia636.eu-central.insforge.app";
-const IF_KEY = "ik_8c0a20bccc4150acc9fd2d52732a1c84";
+        // ==========================================
+        // 1. INSFORGE API
+        // ==========================================
+        const IF_URL = "https://879ia636.eu-central.insforge.app";
+        const IF_KEY = "ik_8c0a20bccc4150acc9fd2d52732a1c84";
 
-const H = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${IF_KEY}`
-};
+        const H = {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${IF_KEY}`
+        };
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+        const generateId = () => Math.random().toString(36).substr(2, 9);
 
-const db = async (path, method = "GET", body = null) => {
-    const res = await fetch(`${IF_URL}/api/database/records/${path}`, {
-        method, headers: H,
-        body: body ? JSON.stringify(body) : null
-    });
-    if (!res.ok) throw new Error(`InsForge error: ${res.status}`);
-    const text = await res.text();
-    return text ? JSON.parse(text) : [];
-};
+        const db = async (path, method = "GET", body = null) => {
+            const res = await fetch(`${IF_URL}/api/database/records/${path}`, {
+                method, headers: H,
+                body: body ? JSON.stringify(body) : null
+            });
+            if (!res.ok) throw new Error(`InsForge error: ${res.status}`);
+            const text = await res.text();
+            return text ? JSON.parse(text) : [];
+        };
 
-const mapPlayer = p => ({ id: p.id, firstName: p.first_name, lastName: p.last_name, age: p.age, handedness: p.handedness, photo: p.photo, points: p.points || 0, gender: p.gender || 'M' });
-const mapTournament = t => ({ id: t.id, name: t.name, startDate: t.start_date, points: t.points, category: t.category, type: t.type, logo: t.logo, status: t.status, bracketSize: t.bracket_size, participantIds: t.participant_ids || [], year: t.year });
-const mapMatch = m => ({ id: m.id, tournamentId: m.tournament_id, round: m.round, index: m.index, p1Ids: m.p1_ids || [], p2Ids: m.p2_ids || [], scores: m.scores || [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winnerId: m.winner_id, status: m.status, date: m.date || '', time: m.time || '', court: m.court || '' });
+        const mapPlayer = p => ({ id: p.id, firstName: p.first_name, lastName: p.last_name, age: p.age, handedness: p.handedness, photo: p.photo, points: p.points || 0, gender: p.gender || 'M' });
+        const mapTournament = t => ({ id: t.id, name: t.name, startDate: t.start_date, points: t.points, category: t.category, type: t.type, logo: t.logo, status: t.status, bracketSize: t.bracket_size, participantIds: t.participant_ids || [], year: t.year });
+        const mapMatch = m => ({ id: m.id, tournamentId: m.tournament_id, round: m.round, index: m.index, p1Ids: m.p1_ids || [], p2Ids: m.p2_ids || [], scores: m.scores || [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winnerId: m.winner_id, status: m.status, date: m.date || '', time: m.time || '', court: m.court || '' });
 
-const InsForgeAPI = {
-    getPlayers: async () => (await db("players")).map(mapPlayer),
-    createPlayer: async (data) => {
-        const rows = await db("players", "POST", { id: generateId(), first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, points: 0 });
-        return mapPlayer(Array.isArray(rows) ? rows[0] : rows);
-    },
-    updatePlayer: async (id, data) => {
-        const rows = await db(`players?id=eq.${id}`, "PATCH", { first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null });
-        return mapPlayer(Array.isArray(rows) ? rows[0] : rows);
-    },
-    deletePlayer: async (id) => db(`players?id=eq.${id}`, "DELETE"),
-    getTournaments: async () => (await db("tournaments")).map(mapTournament),
-    createTournament: async (data) => {
-        let bSize = [2, 4, 8, 16, 32].find(s => s >= (data.type === 'Double' ? Math.ceil(data.participantIds.length / 2) : data.participantIds.length)) || 16;
-        if (data.participantIds.length === 4 && data.type === 'Double') bSize = 2;
-        const rows = await db("tournaments", "POST", { id: generateId(), name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracket_size: bSize, participant_ids: data.participantIds, year: data.year });
-        const t = mapTournament(Array.isArray(rows) ? rows[0] : rows);
-        const mp = [];
-        for (let r = 0; r < Math.log2(bSize); r++)
-            for (let i = 0; i < (bSize / Math.pow(2, r + 1)); i++)
-                mp.push(db("matches", "POST", { id: generateId(), tournament_id: t.id, round: r, index: i, p1_ids: [], p2_ids: [], scores: [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winner_id: null, status: 'pending', date: '', time: '', court: '' }));
-        await Promise.all(mp);
-        return t;
-    },
-    updateTournament: async (id, data) => {
-        const rows = await db(`tournaments?id=eq.${id}`, "PATCH", { name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: data.status, participant_ids: data.participantIds });
-        return mapTournament(Array.isArray(rows) ? rows[0] : rows);
-    },
-    deleteTournament: async (id) => {
-        await db(`matches?tournament_id=eq.${id}`, "DELETE");
-        await db(`tournaments?id=eq.${id}`, "DELETE");
-    },
-    getMatches: async () => (await db("matches?order=round,index")).map(mapMatch),
-    updateMatch: async (matchData) => {
-        await db(`matches?id=eq.${matchData.id}`, "PATCH", { p1_ids: matchData.p1Ids, p2_ids: matchData.p2Ids, scores: matchData.scores, winner_id: matchData.winnerId, status: matchData.winnerId ? 'completed' : 'pending', date: matchData.date || '', time: matchData.time || '', court: matchData.court || '' });
-        if (matchData.winnerId) {
-            const winners = matchData.winnerId === 'p1' ? matchData.p1Ids : matchData.p2Ids;
-            const allM = (await db(`matches?tournament_id=eq.${matchData.tournamentId}`)).map(mapMatch);
-            const nextM = allM.find(m => m.round === matchData.round + 1 && m.index === Math.floor(matchData.index / 2));
-            if (nextM) await db(`matches?id=eq.${nextM.id}`, "PATCH", { [matchData.index % 2 === 0 ? 'p1_ids' : 'p2_ids']: winners });
-            const tr = await db(`tournaments?id=eq.${matchData.tournamentId}`);
-            if (tr[0] && matchData.round === Math.log2(tr[0].bracket_size) - 1)
-                await db(`tournaments?id=eq.${matchData.tournamentId}`, "PATCH", { status: 'completed' });
-        }
-        return InsForgeAPI.getMatches();
-    },
-    autoDraw: async (tournamentId, participants, type, bracketSize, playerRanks) => {
-        let units = type === 'Double' ? participants.reduce((acc, p, i) => (i % 2 === 0 ? [...acc, [p]] : (acc[acc.length - 1].push(p), acc)), []) : participants.map(p => [p]);
-        units.sort((a, b) => { const pts = u => u.reduce((s, id) => s + (playerRanks[id] || 0), 0); return pts(b) - pts(a); });
-        let sp = [1, 2];
-        while (sp.length < bracketSize) { let n = [], sum = sp.length * 2 + 1; for (let j = 0; j < sp.length; j++) { n.push(sp[j]); n.push(sum - sp[j]); } sp = n; }
-        for (let i = 0; i < bracketSize / 2; i++) {
-            const p1Ids = units[sp[i * 2] - 1] || [], p2Ids = units[sp[i * 2 + 1] - 1] || [];
-            const status = (p1Ids.length && p2Ids.length) ? 'pending' : 'bye';
-            const mData = await db(`matches?tournament_id=eq.${tournamentId}&round=eq.0&index=eq.${i}`);
-            if (mData[0]) {
-                await db(`matches?id=eq.${mData[0].id}`, "PATCH", { p1_ids: p1Ids, p2_ids: p2Ids, status });
-                if (status === 'bye') {
-                    const wIds = p1Ids.length ? p1Ids : p2Ids;
-                    const nmd = await db(`matches?tournament_id=eq.${tournamentId}&round=eq.1&index=eq.${Math.floor(i / 2)}`);
-                    if (nmd[0]) await db(`matches?id=eq.${nmd[0].id}`, "PATCH", { [i % 2 === 0 ? 'p1_ids' : 'p2_ids']: wIds });
+        const InsForgeAPI = {
+            getPlayers: async () => (await db("players")).map(mapPlayer),
+            createPlayer: async (data) => {
+                const id = generateId();
+                await db("players", "POST", { id, first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, points: 0, gender: data.gender || 'M' });
+                return { id, firstName: data.firstName, lastName: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, points: 0, gender: data.gender || 'M' };
+            },
+            updatePlayer: async (id, data) => {
+                await db(`players?id=eq.${id}`, "PATCH", { first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, gender: data.gender || 'M' });
+                return { firstName: data.firstName, lastName: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, gender: data.gender || 'M' };
+            },
+            deletePlayer: async (id) => db(`players?id=eq.${id}`, "DELETE"),
+            getTournaments: async () => (await db("tournaments")).map(mapTournament),
+            createTournament: async (data) => {
+                let bSize = [2, 4, 8, 16, 32].find(s => s >= (data.type === 'Double' ? Math.ceil(data.participantIds.length / 2) : data.participantIds.length)) || 16;
+                if (data.participantIds.length === 4 && data.type === 'Double') bSize = 2;
+                const id = generateId();
+                await db("tournaments", "POST", { id, name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracket_size: bSize, participant_ids: data.participantIds, year: data.year });
+                const t = { id, name: data.name, startDate: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracketSize: bSize, participantIds: data.participantIds, year: data.year };
+                const mp = [];
+                for (let r = 0; r < Math.log2(bSize); r++)
+                    for (let i = 0; i < (bSize / Math.pow(2, r + 1)); i++)
+                        mp.push(db("matches", "POST", { id: generateId(), tournament_id: t.id, round: r, index: i, p1_ids: [], p2_ids: [], scores: [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winner_id: null, status: 'pending', date: '', time: '', court: '' }));
+                await Promise.all(mp);
+                return t;
+            },
+            updateTournament: async (id, data) => {
+                await db(`tournaments?id=eq.${id}`, "PATCH", { name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: data.status, participant_ids: data.participantIds });
+                return { name: data.name, startDate: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: data.status, participantIds: data.participantIds };
+            },
+            deleteTournament: async (id) => {
+                await db(`matches?tournament_id=eq.${id}`, "DELETE");
+                await db(`tournaments?id=eq.${id}`, "DELETE");
+            },
+            getMatches: async () => (await db("matches?order=round,index")).map(mapMatch),
+            updateMatch: async (matchData) => {
+                await db(`matches?id=eq.${matchData.id}`, "PATCH", { p1_ids: matchData.p1Ids, p2_ids: matchData.p2Ids, scores: matchData.scores, winner_id: matchData.winnerId, status: matchData.winnerId ? 'completed' : 'pending', date: matchData.date || '', time: matchData.time || '', court: matchData.court || '' });
+                if (matchData.winnerId) {
+                    const winners = matchData.winnerId === 'p1' ? matchData.p1Ids : matchData.p2Ids;
+                    const allM = (await db(`matches?tournament_id=eq.${matchData.tournamentId}`)).map(mapMatch);
+                    const nextM = allM.find(m => m.round === matchData.round + 1 && m.index === Math.floor(matchData.index / 2));
+                    if (nextM) await db(`matches?id=eq.${nextM.id}`, "PATCH", { [matchData.index % 2 === 0 ? 'p1_ids' : 'p2_ids']: winners });
+                    const tr = await db(`tournaments?id=eq.${matchData.tournamentId}`);
+                    if (tr[0] && matchData.round === Math.log2(tr[0].bracket_size) - 1)
+                        await db(`tournaments?id=eq.${matchData.tournamentId}`, "PATCH", { status: 'completed' });
                 }
+                return InsForgeAPI.getMatches();
+            },
+            autoDraw: async (tournamentId, participants, type, bracketSize, playerRanks) => {
+                let units = type === 'Double' ? participants.reduce((acc, p, i) => (i % 2 === 0 ? [...acc, [p]] : (acc[acc.length - 1].push(p), acc)), []) : participants.map(p => [p]);
+                units.sort((a, b) => { const pts = u => u.reduce((s, id) => s + (playerRanks[id] || 0), 0); return pts(b) - pts(a); });
+                let sp = [1, 2];
+                while (sp.length < bracketSize) { let n = [], sum = sp.length * 2 + 1; for (let j = 0; j < sp.length; j++) { n.push(sp[j]); n.push(sum - sp[j]); } sp = n; }
+                for (let i = 0; i < bracketSize / 2; i++) {
+                    const p1Ids = units[sp[i * 2] - 1] || [], p2Ids = units[sp[i * 2 + 1] - 1] || [];
+                    const status = (p1Ids.length && p2Ids.length) ? 'pending' : 'bye';
+                    const mData = await db(`matches?tournament_id=eq.${tournamentId}&round=eq.0&index=eq.${i}`);
+                    if (mData[0]) {
+                        await db(`matches?id=eq.${mData[0].id}`, "PATCH", { p1_ids: p1Ids, p2_ids: p2Ids, status });
+                        if (status === 'bye') {
+                            const wIds = p1Ids.length ? p1Ids : p2Ids;
+                            const nmd = await db(`matches?tournament_id=eq.${tournamentId}&round=eq.1&index=eq.${Math.floor(i / 2)}`);
+                            if (nmd[0]) await db(`matches?id=eq.${nmd[0].id}`, "PATCH", { [i % 2 === 0 ? 'p1_ids' : 'p2_ids']: wIds });
+                        }
+                    }
+                }
+                await db(`tournaments?id=eq.${tournamentId}`, "PATCH", { status: 'ongoing' });
+                return { t: await InsForgeAPI.getTournaments(), m: await InsForgeAPI.getMatches() };
             }
-        }
-        await db(`tournaments?id=eq.${tournamentId}`, "PATCH", { status: 'ongoing' });
-        return { t: await InsForgeAPI.getTournaments(), m: await InsForgeAPI.getMatches() };
-    }
-};
+        };
 
-// ==========================================
-// 2. ICONES SVG
-// ==========================================
-const Icons = {
-    Users: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>,
-    Trophy: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><path d="M14 14.66V17c0 .55-.47.98-.97 1.21C16.15 18.75 17 20.24 17 22" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2z" /></svg>,
-    TrendingUp: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>,
-    Plus: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
-    X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>,
-    Trash: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>,
-    Edit: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>,
-    Image: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>,
-    Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /></svg>,
-    Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-};
+        // ==========================================
+        // 2. ICONES SVG
+        // ==========================================
+        const Icons = {
+            Users: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>,
+            Trophy: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><path d="M14 14.66V17c0 .55-.47.98-.97 1.21C16.15 18.75 17 20.24 17 22" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2z" /></svg>,
+            TrendingUp: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>,
+            Plus: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
+            X: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>,
+            Trash: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>,
+            Edit: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>,
+            Image: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>,
+            Shuffle: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /></svg>,
+            Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+        };
 
-// ==========================================
-// 3. UI GENERIQUE
-// ==========================================
-const Button = ({ children, variant = 'primary', icon: Icon, onClick, disabled, type = "button", className = '' }) => {
-    const base = "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all";
-    const v = { primary: "btn-primary", secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50", danger: "bg-red-50 text-red-600 hover:bg-red-100" };
-    return <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${v[variant]} ${className}`}>{Icon && <Icon />}{children}</button>;
-};
+        // ==========================================
+        // 3. UI GENERIQUE
+        // ==========================================
+        const Button = ({ children, variant = 'primary', icon: Icon, onClick, disabled, type = "button", className = '' }) => {
+            const base = "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all";
+            const v = { primary: "btn-primary", secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50", danger: "bg-red-50 text-red-600 hover:bg-red-100" };
+            return <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${v[variant]} ${className}`}>{Icon && <Icon />}{children}</button>;
+        };
 
-const Toast = ({ message, type = 'success', onClose, duration = 3000 }) => {
-    useEffect(() => { const t = setTimeout(onClose, duration); return () => clearTimeout(t); }, [onClose, duration]);
-    return <div className={`fixed bottom-6 right-6 ${type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-enter z-[200]`}><span className="font-semibold text-sm">{message}</span></div>;
-};
+        const Toast = ({ message, type = 'success', onClose, duration = 3000 }) => {
+            useEffect(() => { const t = setTimeout(onClose, duration); return () => clearTimeout(t); }, [onClose, duration]);
+            return <div className={`fixed bottom-6 right-6 ${type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-enter z-[200]`}><span className="font-semibold text-sm">{message}</span></div>;
+        };
 
-const Modal = ({ isOpen, onClose, title, children, footer, maxWidth = "max-w-lg" }) => {
-    if (!isOpen) return null;
-    return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm animate-enter overflow-y-auto">
-            <div className="min-h-full flex items-center justify-center p-4">
-                <div className={`bg-white rounded-2xl w-full ${maxWidth} shadow-2xl flex flex-col relative m-auto my-8`}>
-                    <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80 shrink-0 rounded-t-2xl">
-                        <h3 className="font-heading font-bold text-[#0B3D2B] text-[13px] uppercase tracking-widest">{title}</h3>
-                        {onClose && <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 rounded-full hover:bg-gray-200 p-1.5 transition-colors"><Icons.X /></button>}
-                    </div>
-                    <div className="p-5 sm:p-6">{children}</div>
-                    {footer && <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 flex justify-end items-center gap-3 shrink-0 rounded-b-2xl">{footer}</div>}
-                </div>
-            </div>
-        </div>,
-        document.body
-    );
-};
-
-// ==========================================
-// 4. VUES METIER
-// ==========================================
-const PlayerStatsModal = ({ player, onClose, allMatches = [], tournaments = [] }) => {
-    if (!player) return null;
-    const pm = allMatches.filter(m => m.status === 'completed' && (m.p1Ids?.includes(player.id) || m.p2Ids?.includes(player.id)));
-    const won = pm.filter(m => (m.p1Ids?.includes(player.id) && m.winnerId === 'p1') || (!m.p1Ids?.includes(player.id) && m.winnerId === 'p2')).length;
-    const ratio = pm.length > 0 ? Math.round((won / pm.length) * 100) : 0;
-    let titles = 0;
-    tournaments.forEach(t => {
-        const fm = allMatches.find(m => m.tournamentId === t.id && m.round === Math.log2(t.bracketSize) - 1);
-        if (fm && fm.status === 'completed' && ((fm.p1Ids?.includes(player.id) && fm.winnerId === 'p1') || (fm.p2Ids?.includes(player.id) && fm.winnerId === 'p2'))) titles++;
-    });
-    const form = pm.sort((a, b) => b.id.localeCompare(a.id)).slice(0, 5).map(m => ((m.p1Ids?.includes(player.id) && m.winnerId === 'p1') || (!m.p1Ids?.includes(player.id) && m.winnerId === 'p2')) ? 'W' : 'L');
-    return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[150] flex justify-center items-center p-4 bg-black/60 backdrop-blur-md animate-enter overflow-y-auto">
-            <div className="bg-white w-full max-w-sm rounded-[2rem] shrink-0">
-                <div className="bg-[#0B3D2B] p-6 text-center relative border-b-4 border-[#D35400] rounded-t-[2rem]">
-                    <button onClick={onClose} className="absolute top-4 right-4 text-white/50 hover:text-white p-2"><Icons.X /></button>
-                    <div className="w-20 h-20 rounded-full bg-white border-4 border-white/20 shadow-xl overflow-hidden mx-auto mb-3">
-                        {player.photo ? <img src={player.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#0B3D2B] font-bold text-2xl">{player.firstName[0]}{player.lastName[0]}</div>}
-                    </div>
-                    <h3 className="text-white font-heading font-bold text-xl uppercase tracking-widest leading-tight">{player.lastName}</h3>
-                    <h4 className="text-white/90 font-medium text-base mb-1.5">{player.firstName}</h4>
-                    <div className="inline-flex gap-2 text-white/70 text-[10px] font-bold uppercase bg-black/20 px-2.5 py-0.5 rounded-full">{player.age} ans • {player.handedness}</div>
-                </div>
-                <div className="p-5 sm:p-6">
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
-                            <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 block">Victoires</span>
-                            <span className="text-3xl font-heading font-black">{ratio}%</span>
-                            <span className="text-[9px] text-gray-400 block mt-0.5">{won} / {pm.length} joués</span>
-                        </div>
-                        <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
-                            <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 block">Titres</span>
-                            <span className="text-3xl font-heading font-black text-[#D35400]">{titles}</span>
-                            <span className="text-[9px] text-gray-400 block mt-0.5">Finales gagnées</span>
-                        </div>
-                    </div>
-                    <div>
-                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 text-center">Forme (5 derniers)</h4>
-                        <div className="flex gap-1.5 justify-center">
-                            {form.length ? form.map((r, i) => <div key={i} className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-[10px] shadow-sm ${r === 'W' ? 'form-w' : 'form-l'}`}>{r}</div>) : <span className="text-xs text-gray-400 italic">Aucun match</span>}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>,
-        document.body
-    );
-};
-
-const PlayersManager = ({ players, isAdmin, onAddPlayer, onUpdatePlayer, onDeletePlayer, onOpenStats }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingPlayer, setEditingPlayer] = useState(null);
-    const [formData, setFormData] = useState({ firstName: '', lastName: '', age: '', handedness: 'Droitier', gender: 'M', photo: null });
-    const handleSubmit = e => { e.preventDefault(); editingPlayer ? onUpdatePlayer(editingPlayer.id, { ...formData, age: Number(formData.age) }) : onAddPlayer({ ...formData, age: Number(formData.age) }); reset(); };
-    const reset = () => { setIsModalOpen(false); setEditingPlayer(null); setFormData({ firstName: '', lastName: '', age: '', handedness: 'Droitier', gender: 'M', photo: null }); };
-    const handleFile = e => { const f = e.target.files[0]; if (f) { const r = new FileReader(); r.onloadend = () => setFormData(p => ({ ...p, photo: r.result })); r.readAsDataURL(f); } };
-    return (
-        <div className="animate-enter space-y-6">
-            <div className="flex justify-between items-center bg-white p-5 rounded-xl shadow-sm mb-4">
-                <h2 className="text-xl font-heading font-extrabold text-[#0B3D2B]">Joueurs</h2>
-                {isAdmin && <Button icon={Icons.Plus} onClick={() => setIsModalOpen(true)}>Nouveau Joueur</Button>}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
-                {players.map(p => (
-                    <div key={p.id} onClick={() => onOpenStats(p)} className="bg-white rounded-xl p-4 flex flex-col items-center relative group cursor-pointer shadow-sm hover:shadow-lg transition-all border border-gray-100 hover:border-orange-100 duration-300 transform hover:-translate-y-0.5">
-                        {isAdmin && <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                            <button onClick={e => { e.stopPropagation(); setEditingPlayer(p); setFormData({ ...p }); setIsModalOpen(true); }} className="w-6 h-6 bg-white/90 text-blue-600 rounded-full shadow border border-gray-100 hover:bg-blue-50 flex items-center justify-center"><Icons.Edit /></button>
-                            <button onClick={e => { e.stopPropagation(); if (confirm('Sûr de supprimer ?')) onDeletePlayer(p.id); }} className="w-6 h-6 bg-white/90 text-red-600 rounded-full shadow border border-gray-100 hover:bg-red-50 flex items-center justify-center"><Icons.Trash /></button>
-                        </div>}
-                        <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-orange-50 ring-2 ring-white shadow-[0_2px_10px_rgba(211,84,0,0.1)] flex items-center justify-center overflow-hidden shrink-0 mt-1 mb-2">
-                            {p.photo ? <img src={p.photo} className="w-full h-full object-cover" /> : <span className="text-lg font-heading font-extrabold text-[#D35400]">{p.firstName[0]}{p.lastName[0]}</span>}
-                        </div>
-                        <div className="text-center w-full">
-                            <h3 className="text-[14px] font-bold uppercase truncate px-1 text-[#0B3D2B] tracking-wide mb-0.5">{p.lastName}</h3>
-                            <p className="text-[12px] font-semibold text-gray-500 truncate px-1">{p.firstName}</p>
-                            <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-                                <span>{p.gender}</span><span className="w-1 h-1 rounded-full bg-gray-300"></span><span>{p.age}A</span><span className="w-1 h-1 rounded-full bg-gray-300"></span><span>{p.handedness.substring(0, 3)}</span>
+        const Modal = ({ isOpen, onClose, title, children, footer, maxWidth = "max-w-lg" }) => {
+            if (!isOpen) return null;
+            return ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm animate-enter overflow-y-auto">
+                    <div className="min-h-full flex items-center justify-center p-4">
+                        <div className={`bg-white rounded-2xl w-full ${maxWidth} shadow-2xl flex flex-col relative m-auto my-8`}>
+                            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80 shrink-0 rounded-t-2xl">
+                                <h3 className="font-heading font-bold text-[#0B3D2B] text-[13px] uppercase tracking-widest">{title}</h3>
+                                {onClose && <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 rounded-full hover:bg-gray-200 p-1.5 transition-colors"><Icons.X /></button>}
                             </div>
+                            <div className="p-5 sm:p-6">{children}</div>
+                            {footer && <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 flex justify-end items-center gap-3 shrink-0 rounded-b-2xl">{footer}</div>}
                         </div>
                     </div>
-                ))}
-            </div>
-            <Modal isOpen={isModalOpen} onClose={reset} title={editingPlayer ? "Modifier Profil" : "Nouveau Joueur"} maxWidth="max-w-xl"
-                footer={<><button type="button" onClick={reset} className="text-gray-500 hover:text-gray-800 text-sm font-bold px-4 py-2">Fermer</button><button type="submit" form="playerForm" className="bg-[#0B3D2B] hover:bg-[#082a1d] text-white px-6 py-2.5 rounded-lg shadow-sm font-bold text-sm">Sauver</button></>}>
-                <form id="playerForm" onSubmit={handleSubmit} className="space-y-5">
-                    <div className="flex justify-center">
-                        <label className="relative cursor-pointer group w-20 h-20 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden hover:bg-gray-100 transition-colors shadow-sm">
-                            {formData.photo ? <img src={formData.photo} className="w-full h-full object-cover" /> : <div className="text-gray-400 group-hover:scale-110 transition-transform"><Icons.Image /></div>}
-                            <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
-                        </label>
-                    </div>
-                    <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                            <input required placeholder="NOM (ex: DUPONT)" className="w-full p-2.5 border rounded-lg uppercase bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
-                            <input required placeholder="Prénom (ex: Jean)" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            <input required type="number" placeholder="Âge (ex: 25)" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.age} onChange={e => setFormData({ ...formData, age: e.target.value })} />
-                            <select className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.handedness} onChange={e => setFormData({ ...formData, handedness: e.target.value })}>
-                                <option>Droitier</option><option>Gaucher</option>
-                            </select>
-                            <select className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })}>
-                                <option value="M">Homme</option><option value="F">Femme</option>
-                            </select>
-                        </div>
-                    </div>
-                </form>
-            </Modal>
-        </div>
-    );
-};
+                </div>,
+                document.body
+            );
+        };
 
-const TournamentsManager = ({ tournaments, players, year, isAdmin, onCreate, onUpdate, onDelete, onSelectTourney }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingTourney, setEditingTourney] = useState(null);
-    const [formData, setFormData] = useState({ name: '', startDate: '', type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null });
-    const reset = () => { setIsModalOpen(false); setEditingTourney(null); setFormData({ name: '', startDate: '', type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null }); };
-    const handleSubmit = e => { e.preventDefault(); if (formData.participantIds.length < 2) return alert('Minimum 2 participants'); editingTourney ? onUpdate(editingTourney.id, formData) : onCreate({ ...formData, year }); reset(); };
-    const toggleParts = id => setFormData(p => ({ ...p, participantIds: p.participantIds.includes(id) ? p.participantIds.filter(x => x !== id) : [...p.participantIds, id] }));
-    const handleLogo = e => { const f = e.target.files[0]; if (f) { const r = new FileReader(); r.onloadend = () => setFormData(p => ({ ...p, logo: r.result })); r.readAsDataURL(f); } };
-    const eligibles = players.filter(p => formData.category === 'Mixte' || (formData.category === 'Messieurs' ? p.gender !== 'F' : p.gender !== 'M'));
-    const count = formData.participantIds.length;
-    const isDouble = formData.type === 'Double';
-    const msg = isDouble ? (count === 0 ? "Sélectionnez le 1er joueur de la paire" : (count % 2 === 0 ? `Paire ${Math.floor(count / 2) + 1} - 1er joueur` : `Partenaire de ${players.find(p => p.id === formData.participantIds[count - 1])?.lastName}`)) : "Sélection joueurs";
-    return (
-        <div className="animate-enter space-y-6">
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm">
-                <h2 className="text-xl font-heading font-bold">Tournois {year}</h2>
-                {isAdmin && <Button icon={Icons.Plus} onClick={() => setIsModalOpen(true)}>Nouveau</Button>}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {tournaments.map(t => (
-                    <div key={t.id} onClick={() => onSelectTourney(t.id)} className="glass-panel p-6 rounded-2xl border-t-4 border-t-[#D35400] hover:shadow-lg transition-all cursor-pointer relative group flex items-start gap-4 pr-12">
-                        {isAdmin && <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                            <button onClick={e => { e.stopPropagation(); setEditingTourney(t); setFormData({ ...t }); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700 p-1 bg-white rounded shadow-sm border"><Icons.Edit /></button>
-                            <button onClick={e => { e.stopPropagation(); if (confirm('Supprimer ce tournoi ?')) onDelete(t.id); }} className="text-red-500 hover:text-red-700 p-1 bg-white rounded shadow-sm border"><Icons.Trash /></button>
-                        </div>}
-                        <div className="w-12 h-12 rounded-lg bg-gray-50 border flex items-center justify-center overflow-hidden shrink-0">{t.logo ? <img src={t.logo} /> : <Icons.Trophy />}</div>
-                        <div>
-                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${t.status === 'draft' ? 'bg-gray-200 text-gray-500' : t.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status === 'draft' ? 'Brouillon' : t.status === 'completed' ? 'Achevé' : 'En cours'}</span>
-                            <h3 className="font-heading font-bold text-lg mt-1">{t.name}</h3>
-                            <p className="text-xs text-gray-500">{t.type} • {t.category} • {t.points} pts</p>
+        // ==========================================
+        // 4. VUES METIER
+        // ==========================================
+        const PlayerStatsModal = ({ player, onClose, allMatches = [], tournaments = [] }) => {
+            if (!player) return null;
+            const pm = allMatches.filter(m => m.status === 'completed' && (m.p1Ids?.includes(player.id) || m.p2Ids?.includes(player.id)));
+            const won = pm.filter(m => (m.p1Ids?.includes(player.id) && m.winnerId === 'p1') || (!m.p1Ids?.includes(player.id) && m.winnerId === 'p2')).length;
+            const ratio = pm.length > 0 ? Math.round((won / pm.length) * 100) : 0;
+            let titles = 0;
+            tournaments.forEach(t => {
+                const fm = allMatches.find(m => m.tournamentId === t.id && m.round === Math.log2(t.bracketSize) - 1);
+                if (fm && fm.status === 'completed' && ((fm.p1Ids?.includes(player.id) && fm.winnerId === 'p1') || (fm.p2Ids?.includes(player.id) && fm.winnerId === 'p2'))) titles++;
+            });
+            const form = pm.sort((a, b) => b.id.localeCompare(a.id)).slice(0, 5).map(m => ((m.p1Ids?.includes(player.id) && m.winnerId === 'p1') || (!m.p1Ids?.includes(player.id) && m.winnerId === 'p2')) ? 'W' : 'L');
+            return ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[150] flex justify-center items-center p-4 bg-black/60 backdrop-blur-md animate-enter overflow-y-auto">
+                    <div className="bg-white w-full max-w-sm rounded-[2rem] shrink-0">
+                        <div className="bg-[#0B3D2B] p-6 text-center relative border-b-4 border-[#D35400] rounded-t-[2rem]">
+                            <button onClick={onClose} className="absolute top-4 right-4 text-white/50 hover:text-white p-2"><Icons.X /></button>
+                            <div className="w-20 h-20 rounded-full bg-white border-4 border-white/20 shadow-xl overflow-hidden mx-auto mb-3">
+                                {player.photo ? <img src={player.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#0B3D2B] font-bold text-2xl">{player.firstName[0]}{player.lastName[0]}</div>}
+                            </div>
+                            <h3 className="text-white font-heading font-bold text-xl uppercase tracking-widest leading-tight">{player.lastName}</h3>
+                            <h4 className="text-white/90 font-medium text-base mb-1.5">{player.firstName}</h4>
+                            <div className="inline-flex gap-2 text-white/70 text-[10px] font-bold uppercase bg-black/20 px-2.5 py-0.5 rounded-full">{player.age} ans • {player.handedness}</div>
                         </div>
-                    </div>
-                ))}
-            </div>
-            <Modal isOpen={isModalOpen} onClose={reset} title={editingTourney ? "Modifier Tournoi" : "Nouveau Tournoi"} maxWidth="max-w-3xl"
-                footer={<><button type="button" onClick={reset} className="text-gray-500 hover:text-gray-800 text-sm font-bold px-4 py-2">Annuler</button><button type="submit" form="tourneyForm" className="bg-[#D35400] hover:bg-[#A04000] text-white px-8 py-2.5 rounded-lg shadow-sm font-bold text-[11px] uppercase tracking-wider">{editingTourney ? "Sauver" : "Générer"} ({count})</button></>}>
-                <form id="tourneyForm" onSubmit={handleSubmit} className="flex flex-col gap-6">
-                    {/* SECTION DU HAUT : GRILLE LOGO + PARAMETRES */}
-                    <div className="grid grid-cols-1 md:grid-cols-[auto,1fr] gap-6 items-start">
-                        {/* COLONNE GAUCHE : LOGO AGRANDI */}
-                        <div className="flex flex-col gap-2 items-center">
-                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Affiche / Logo</h4>
-                            <label className="relative cursor-pointer border-2 border-dashed border-gray-300 rounded-xl w-40 h-40 flex flex-col items-center justify-center hover:bg-gray-50 overflow-hidden group transition-all bg-gray-50/50 shrink-0">
-                                {formData.logo ? <img src={formData.logo} className="w-full h-full object-cover" /> : <div className="text-gray-400 flex flex-col items-center gap-2"><Icons.Image /><span className="text-xs font-semibold">Ajouter</span></div>}
-                                <input type="file" accept="image/*" className="hidden" onChange={handleLogo} />
-                            </label>
-                        </div>
-                        {/* COLONNE DROITE : TOUS LES PARAMETRES */}
-                        <div className="flex flex-col gap-3">
-                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Paramètres</h4>
-                            {/* LIGNE 1 : NOM */}
-                            <input required placeholder="Nom (ex: Open de Printemps)" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none font-bold text-gray-700 text-sm" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                            {/* LIGNE 2 : GRILLE DATES/POINTS/CATEGORIE/TYPE */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                <input required type="date" className="p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none text-sm font-semibold" value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} />
-                                <input required type="number" placeholder="Points" className="p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none font-bold text-[#D35400] text-sm" value={formData.points} onChange={e => setFormData({ ...formData, points: Number(e.target.value) })} />
-                                <select className="p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none font-semibold text-sm" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value, participantIds: [] })}>
-                                    <option>Messieurs</option><option>Dames</option><option>Mixte</option>
-                                </select>
-                                <div className="flex gap-1.5 p-1 bg-gray-100 rounded-lg shadow-inner">
-                                    <button type="button" onClick={() => setFormData({ ...formData, type: 'Simple', participantIds: [] })} className={`flex-1 py-1.5 rounded text-[10px] uppercase font-bold tracking-wider transition-all ${formData.type === 'Simple' ? 'bg-white shadow-sm text-[#0B3D2B]' : 'text-gray-500'}`}>Simple</button>
-                                    <button type="button" onClick={() => setFormData({ ...formData, type: 'Double', participantIds: [] })} className={`flex-1 py-1.5 rounded text-[10px] uppercase font-bold tracking-wider transition-all ${formData.type === 'Double' ? 'bg-white shadow-sm text-[#0B3D2B]' : 'text-gray-500'}`}>Double</button>
+                        <div className="p-5 sm:p-6">
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 block">Victoires</span>
+                                    <span className="text-3xl font-heading font-black">{ratio}%</span>
+                                    <span className="text-[9px] text-gray-400 block mt-0.5">{won} / {pm.length} joués</span>
+                                </div>
+                                <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 block">Titres</span>
+                                    <span className="text-3xl font-heading font-black text-[#D35400]">{titles}</span>
+                                    <span className="text-[9px] text-gray-400 block mt-0.5">Finales gagnées</span>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 text-center">Forme (5 derniers)</h4>
+                                <div className="flex gap-1.5 justify-center">
+                                    {form.length ? form.map((r, i) => <div key={i} className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-[10px] shadow-sm ${r === 'W' ? 'form-w' : 'form-l'}`}>{r}</div>) : <span className="text-xs text-gray-400 italic">Aucun match</span>}
                                 </div>
                             </div>
                         </div>
                     </div>
-                    {/* SECTION DU BAS : JOUEURS */}
-                    <div className="flex bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm h-72">
-                        <div className="w-8 shrink-0 bg-orange-50 border-r border-orange-100 flex items-center justify-center uppercase [text-orientation:mixed] [writing-mode:vertical-rl] font-bold text-[#D35400] text-[9px] tracking-widest">Joueurs</div>
-                        <div className="p-3 flex-1 overflow-y-auto flex flex-wrap gap-2 content-start bg-gray-50/30">
-                            <div className="w-full text-center font-bold text-[#D35400] text-[10px] uppercase tracking-widest mb-2 bg-white sticky top-0 py-1.5 border-b border-orange-100 rounded shadow-sm z-10">{msg}</div>
-                            {eligibles.map(p => { const sel = formData.participantIds.includes(p.id); return <button type="button" key={p.id} onClick={() => toggleParts(p.id)} className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold whitespace-nowrap transition-all border ${sel ? 'bg-green-600 text-white border-green-700 shadow-sm scale-105' : 'bg-white text-gray-700 border-gray-200 hover:border-green-400'}`}>{p.lastName} {p.firstName}</button>; })}
-                            {eligibles.length === 0 && <div className="text-gray-400 text-xs italic w-full text-center mt-4">Aucun joueur éligible.</div>}
-                        </div>
-                    </div>
-                </form>
-            </Modal>
-        </div>
-    );
-};
+                </div>,
+                document.body
+            );
+        };
 
-const BracketView = ({ tournament, matches, players, ranks, isAdmin, onMatchUpdate, onDraw, goBack, onOpenStats }) => {
-    const [editMatch, setEditMatch] = useState(null);
-    const allR0Units = useMemo(() => {
-        const units = [];
-        if (!tournament || !matches) return units;
-        matches.filter(m => m.tournamentId === tournament.id && m.round === 0).forEach(m => {
-            if (m.p1Ids && m.p1Ids.length > 0) units.push({ id: `p1-${m.id}`, ps: m.p1Ids });
-            if (m.p2Ids && m.p2Ids.length > 0) units.push({ id: `p2-${m.id}`, ps: m.p2Ids });
-        });
-        return units;
-    }, [tournament, matches]);
-    if (!tournament) return null;
-    const tMatches = matches.filter(m => m.tournamentId === tournament.id);
-    const handleUpdate = () => { onMatchUpdate(editMatch); setEditMatch(null); };
-    const renderNames = ids => {
-        if (!ids || ids.length === 0) return <span className="text-gray-300 italic">...</span>;
-        return ids.map((id, i) => <span key={id} onClick={e => { e.stopPropagation(); onOpenStats(players.find(p => p.id === id)); }} className="hover:text-[#D35400] cursor-pointer inline-flex items-center">{players.find(p => p.id === id)?.lastName}{i < ids.length - 1 && <span className="mx-1 text-gray-400">/</span>}</span>);
-    };
-    return (
-        <div className="animate-enter">
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-6">
-                <div className="flex items-center gap-4"><Button variant="secondary" onClick={goBack}>Retour</Button><h2 className="text-xl font-heading font-bold">{tournament.name}</h2></div>
-                {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage</Button>}
-            </div>
-            {tournament.status !== 'draft' && (
-                <div className="flex gap-8 overflow-x-auto pb-10" style={{ minHeight: '600px' }}>
-                    {Array.from({ length: Math.log2(tournament.bracketSize) }).map((_, rIdx) => {
-                        const mCount = tournament.bracketSize / Math.pow(2, rIdx + 1);
-                        return (
-                            <div key={rIdx} className="w-56 flex flex-col relative shrink-0">
-                                <div className="text-center mb-4 shrink-0"><span className="bg-[#0B3D2B] text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase">{rIdx === Math.log2(tournament.bracketSize) - 1 ? 'Finale' : `Tour ${rIdx + 1}`}</span></div>
-                                <div className="flex-1 flex flex-col w-full">
-                                    {Array.from({ length: mCount }).map((__, mIdx) => {
-                                        const m = tMatches.find(tm => tm.round === rIdx && tm.index === mIdx);
-                                        return (
-                                            <div key={mIdx} className="w-full relative flex-1 flex items-center justify-center py-2">
-                                                {m ? (
-                                                    <div onClick={() => { if (isAdmin && m.status !== 'bye') setEditMatch({ ...m }) }} className={`w-full bg-white rounded-xl shadow-sm border flex flex-col transition-all ${isAdmin ? 'cursor-pointer hover:border-[#D35400]' : ''} ${m.status === 'bye' ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
-                                                        {(m.date || m.time || m.court) && <div className="flex gap-1 bg-gray-50/80 rounded-t-xl px-2 py-1 items-center justify-center text-[8.5px] text-gray-500 font-bold uppercase border-b border-gray-100 flex-wrap">
-                                                            {m.date && <span className="text-blue-600">📅 {m.date.split('-').reverse().slice(0, 2).join('/')}</span>}
-                                                            {m.time && <span className="text-orange-600">⏰ {m.time}</span>}
-                                                            {m.court && <span className="text-green-700">🏟️ CT.{m.court}</span>}
-                                                        </div>}
-                                                        <div className="p-2">
-                                                            {[{ ps: m.p1Ids, id: 'p1' }, { ps: m.p2Ids, id: 'p2' }].map((slot, i) => {
-                                                                const isW = m.winnerId === slot.id;
-                                                                const sW = m.scores.reduce((a, s) => a + (slot.id === 'p1' ? (s.p1 > s.p2 ? 1 : 0) : (s.p2 > s.p1 ? 1 : 0)), 0);
-                                                                return (
-                                                                    <div key={i} className={`flex justify-between items-center text-xs p-1.5 ${i === 0 ? 'border-b border-gray-100' : ''} ${isW ? 'bg-orange-50 font-bold text-[#D35400]' : ''}`}>
-                                                                        <div className="truncate flex items-center gap-1.5">{renderNames(slot.ps)}{isW && rIdx === Math.log2(tournament.bracketSize) - 1 && <span className="text-yellow-500 text-[10px]">🏆</span>}</div>
-                                                                        {m.status !== 'bye' && <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                                                                            <div className="flex gap-1">{m.scores.map((s, idx) => {
-                                                                                if (s.p1 === 0 && s.p2 === 0 && m.scores.every(x => x.p1 === 0 && x.p2 === 0)) return null;
-                                                                                if (s.p1 === 0 && s.p2 === 0 && idx > 0) return null;
-                                                                                const sVal = slot.id === 'p1' ? s.p1 : s.p2, opVal = slot.id === 'p1' ? s.p2 : s.p1;
-                                                                                return <span key={idx} className={`text-[10px] w-2.5 text-center ${sVal > opVal ? 'font-bold text-gray-800' : 'text-gray-400'}`}>{sVal}</span>;
-                                                                            })}</div>
-                                                                            <div className={`w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center ${sW >= 2 ? 'bg-[#0B3D2B] text-white' : 'bg-gray-100 text-gray-500'}`}>{sW}</div>
-                                                                        </div>}
-                                                                    </div>
-                                                                );
-                                                            })}
+        const PlayersManager = ({ players, isAdmin, onAddPlayer, onUpdatePlayer, onDeletePlayer, onOpenStats }) => {
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingPlayer, setEditingPlayer] = useState(null);
+            const [formData, setFormData] = useState({ firstName: '', lastName: '', age: '', handedness: 'Droitier', gender: 'M', photo: null });
+            const handleSubmit = e => { e.preventDefault(); editingPlayer ? onUpdatePlayer(editingPlayer.id, { ...formData, age: Number(formData.age) }) : onAddPlayer({ ...formData, age: Number(formData.age) }); reset(); };
+            const reset = () => { setIsModalOpen(false); setEditingPlayer(null); setFormData({ firstName: '', lastName: '', age: '', handedness: 'Droitier', gender: 'M', photo: null }); };
+            const handleFile = e => { const f = e.target.files[0]; if (f) { const r = new FileReader(); r.onloadend = () => setFormData(p => ({ ...p, photo: r.result })); r.readAsDataURL(f); } };
+            return (
+                <div className="animate-enter space-y-6">
+                    <div className="flex justify-between items-center bg-white p-5 rounded-xl shadow-sm mb-4">
+                        <h2 className="text-xl font-heading font-extrabold text-[#0B3D2B]">Joueurs</h2>
+                        {isAdmin && <Button icon={Icons.Plus} onClick={() => setIsModalOpen(true)}>Nouveau Joueur</Button>}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
+                        {players.map(p => (
+                            <div key={p.id} onClick={() => onOpenStats(p)} className="bg-white rounded-xl p-4 flex flex-col items-center relative group cursor-pointer shadow-sm hover:shadow-lg transition-all border border-gray-100 hover:border-orange-100 duration-300 transform hover:-translate-y-0.5">
+                                {isAdmin && <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <button onClick={e => { e.stopPropagation(); setEditingPlayer(p); setFormData({ ...p }); setIsModalOpen(true); }} className="w-6 h-6 bg-white/90 text-blue-600 rounded-full shadow border border-gray-100 hover:bg-blue-50 flex items-center justify-center"><Icons.Edit /></button>
+                                    <button onClick={e => { e.stopPropagation(); if (confirm('Sûr de supprimer ?')) onDeletePlayer(p.id); }} className="w-6 h-6 bg-white/90 text-red-600 rounded-full shadow border border-gray-100 hover:bg-red-50 flex items-center justify-center"><Icons.Trash /></button>
+                                </div>}
+                                <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-orange-50 ring-2 ring-white shadow-[0_2px_10px_rgba(211,84,0,0.1)] flex items-center justify-center overflow-hidden shrink-0 mt-1 mb-2">
+                                    {p.photo ? <img src={p.photo} className="w-full h-full object-cover" /> : <span className="text-lg font-heading font-extrabold text-[#D35400]">{p.firstName[0]}{p.lastName[0]}</span>}
+                                </div>
+                                <div className="text-center w-full">
+                                    <h3 className="text-[14px] font-bold uppercase truncate px-1 text-[#0B3D2B] tracking-wide mb-0.5">{p.lastName}</h3>
+                                    <p className="text-[12px] font-semibold text-gray-500 truncate px-1">{p.firstName}</p>
+                                    <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                                        <span>{p.gender}</span><span className="w-1 h-1 rounded-full bg-gray-300"></span><span>{p.age}A</span><span className="w-1 h-1 rounded-full bg-gray-300"></span><span>{p.handedness.substring(0, 3)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <Modal isOpen={isModalOpen} onClose={reset} title={editingPlayer ? "Modifier Profil" : "Nouveau Joueur"} maxWidth="max-w-xl"
+                        footer={<><button type="button" onClick={reset} className="text-gray-500 hover:text-gray-800 text-sm font-bold px-4 py-2">Fermer</button><button type="submit" form="playerForm" className="bg-[#0B3D2B] hover:bg-[#082a1d] text-white px-6 py-2.5 rounded-lg shadow-sm font-bold text-sm">Sauver</button></>}>
+                        <form id="playerForm" onSubmit={handleSubmit} className="space-y-5">
+                            <div className="flex justify-center">
+                                <label className="relative cursor-pointer group w-20 h-20 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden hover:bg-gray-100 transition-colors shadow-sm">
+                                    {formData.photo ? <img src={formData.photo} className="w-full h-full object-cover" /> : <div className="text-gray-400 group-hover:scale-110 transition-transform"><Icons.Image /></div>}
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
+                                </label>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input required placeholder="NOM (ex: DUPONT)" className="w-full p-2.5 border rounded-lg uppercase bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
+                                    <input required placeholder="Prénom (ex: Jean)" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <input required type="number" placeholder="Âge (ex: 25)" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.age} onChange={e => setFormData({ ...formData, age: e.target.value })} />
+                                    <select className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.handedness} onChange={e => setFormData({ ...formData, handedness: e.target.value })}>
+                                        <option>Droitier</option><option>Gaucher</option>
+                                    </select>
+                                    <select className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-[#0B3D2B]/20 outline-none text-sm font-semibold" value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })}>
+                                        <option value="M">Homme</option><option value="F">Femme</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </form>
+                    </Modal>
+                </div>
+            );
+        };
+
+        const TournamentsManager = ({ tournaments, players, year, isAdmin, onCreate, onUpdate, onDelete, onSelectTourney }) => {
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingTourney, setEditingTourney] = useState(null);
+            const [formData, setFormData] = useState({ name: '', startDate: '', type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null });
+            const reset = () => { setIsModalOpen(false); setEditingTourney(null); setFormData({ name: '', startDate: '', type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null }); };
+            const handleSubmit = e => { e.preventDefault(); if (formData.participantIds.length < 2) return alert('Minimum 2 participants'); editingTourney ? onUpdate(editingTourney.id, formData) : onCreate({ ...formData, year }); reset(); };
+            const toggleParts = id => setFormData(p => ({ ...p, participantIds: p.participantIds.includes(id) ? p.participantIds.filter(x => x !== id) : [...p.participantIds, id] }));
+            const handleLogo = e => { const f = e.target.files[0]; if (f) { const r = new FileReader(); r.onloadend = () => setFormData(p => ({ ...p, logo: r.result })); r.readAsDataURL(f); } };
+            const eligibles = players.filter(p => formData.category === 'Mixte' || (formData.category === 'Messieurs' ? p.gender !== 'F' : p.gender !== 'M'));
+            const count = formData.participantIds.length;
+            const isDouble = formData.type === 'Double';
+            const msg = isDouble ? (count === 0 ? "Sélectionnez le 1er joueur de la paire" : (count % 2 === 0 ? `Paire ${Math.floor(count / 2) + 1} - 1er joueur` : `Partenaire de ${players.find(p => p.id === formData.participantIds[count - 1])?.lastName}`)) : "Sélection joueurs";
+            return (
+                <div className="animate-enter space-y-6">
+                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm">
+                        <h2 className="text-xl font-heading font-bold">Tournois {year}</h2>
+                        {isAdmin && <Button icon={Icons.Plus} onClick={() => setIsModalOpen(true)}>Nouveau</Button>}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {tournaments.map(t => (
+                            <div key={t.id} onClick={() => onSelectTourney(t.id)} className="glass-panel p-6 rounded-2xl border-t-4 border-t-[#D35400] hover:shadow-lg transition-all cursor-pointer relative group flex items-start gap-4 pr-12">
+                                {isAdmin && <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <button onClick={e => { e.stopPropagation(); setEditingTourney(t); setFormData({ ...t }); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700 p-1 bg-white rounded shadow-sm border"><Icons.Edit /></button>
+                                    <button onClick={e => { e.stopPropagation(); if (confirm('Supprimer ce tournoi ?')) onDelete(t.id); }} className="text-red-500 hover:text-red-700 p-1 bg-white rounded shadow-sm border"><Icons.Trash /></button>
+                                </div>}
+                                <div className="w-12 h-12 rounded-lg bg-gray-50 border flex items-center justify-center overflow-hidden shrink-0">{t.logo ? <img src={t.logo} /> : <Icons.Trophy />}</div>
+                                <div>
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${t.status === 'draft' ? 'bg-gray-200 text-gray-500' : t.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{t.status === 'draft' ? 'Brouillon' : t.status === 'completed' ? 'Achevé' : 'En cours'}</span>
+                                    <h3 className="font-heading font-bold text-lg mt-1">{t.name}</h3>
+                                    <p className="text-xs text-gray-500">{t.type} • {t.category} • {t.points} pts</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <Modal isOpen={isModalOpen} onClose={reset} title={editingTourney ? "Modifier Tournoi" : "Nouveau Tournoi"} maxWidth="max-w-3xl"
+                        footer={<><button type="button" onClick={reset} className="text-gray-500 hover:text-gray-800 text-sm font-bold px-4 py-2">Annuler</button><button type="submit" form="tourneyForm" className="bg-[#D35400] hover:bg-[#A04000] text-white px-8 py-2.5 rounded-lg shadow-sm font-bold text-[11px] uppercase tracking-wider">{editingTourney ? "Sauver" : "Générer"} ({count})</button></>}>
+                        <form id="tourneyForm" onSubmit={handleSubmit} className="flex flex-col gap-6">
+                            {/* SECTION DU HAUT : GRILLE LOGO + PARAMETRES */}
+                            <div className="grid grid-cols-1 md:grid-cols-[auto,1fr] gap-6 items-start">
+                                {/* COLONNE GAUCHE : LOGO AGRANDI */}
+                                <div className="flex flex-col gap-2 items-center">
+                                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Affiche / Logo</h4>
+                                    <label className="relative cursor-pointer border-2 border-dashed border-gray-300 rounded-xl w-40 h-40 flex flex-col items-center justify-center hover:bg-gray-50 overflow-hidden group transition-all bg-gray-50/50 shrink-0">
+                                        {formData.logo ? <img src={formData.logo} className="w-full h-full object-cover" /> : <div className="text-gray-400 flex flex-col items-center gap-2"><Icons.Image /><span className="text-xs font-semibold">Ajouter</span></div>}
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleLogo} />
+                                    </label>
+                                </div>
+                                {/* COLONNE DROITE : TOUS LES PARAMETRES */}
+                                <div className="flex flex-col gap-3">
+                                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Paramètres</h4>
+                                    {/* LIGNE 1 : NOM */}
+                                    <input required placeholder="Nom (ex: Open de Printemps)" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none font-bold text-gray-700 text-sm" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                    {/* LIGNE 2 : GRILLE DATES/POINTS/CATEGORIE/TYPE */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                        <input required type="date" className="p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none text-sm font-semibold" value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} />
+                                        <input required type="number" placeholder="Points" className="p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none font-bold text-[#D35400] text-sm" value={formData.points} onChange={e => setFormData({ ...formData, points: Number(e.target.value) })} />
+                                        <select className="p-2.5 border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 ring-orange-500/20 outline-none font-semibold text-sm" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value, participantIds: [] })}>
+                                            <option>Messieurs</option><option>Dames</option><option>Mixte</option>
+                                        </select>
+                                        <div className="flex gap-1.5 p-1 bg-gray-100 rounded-lg shadow-inner">
+                                            <button type="button" onClick={() => setFormData({ ...formData, type: 'Simple', participantIds: [] })} className={`flex-1 py-1.5 rounded text-[10px] uppercase font-bold tracking-wider transition-all ${formData.type === 'Simple' ? 'bg-white shadow-sm text-[#0B3D2B]' : 'text-gray-500'}`}>Simple</button>
+                                            <button type="button" onClick={() => setFormData({ ...formData, type: 'Double', participantIds: [] })} className={`flex-1 py-1.5 rounded text-[10px] uppercase font-bold tracking-wider transition-all ${formData.type === 'Double' ? 'bg-white shadow-sm text-[#0B3D2B]' : 'text-gray-500'}`}>Double</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* SECTION DU BAS : JOUEURS */}
+                            <div className="flex bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm h-72">
+                                <div className="w-8 shrink-0 bg-orange-50 border-r border-orange-100 flex items-center justify-center uppercase [text-orientation:mixed] [writing-mode:vertical-rl] font-bold text-[#D35400] text-[9px] tracking-widest">Joueurs</div>
+                                <div className="p-3 flex-1 overflow-y-auto flex flex-wrap gap-2 content-start bg-gray-50/30">
+                                    <div className="w-full text-center font-bold text-[#D35400] text-[10px] uppercase tracking-widest mb-2 bg-white sticky top-0 py-1.5 border-b border-orange-100 rounded shadow-sm z-10">{msg}</div>
+                                    {eligibles.map(p => { const sel = formData.participantIds.includes(p.id); return <button type="button" key={p.id} onClick={() => toggleParts(p.id)} className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold whitespace-nowrap transition-all border ${sel ? 'bg-green-600 text-white border-green-700 shadow-sm scale-105' : 'bg-white text-gray-700 border-gray-200 hover:border-green-400'}`}>{p.lastName} {p.firstName}</button>; })}
+                                    {eligibles.length === 0 && <div className="text-gray-400 text-xs italic w-full text-center mt-4">Aucun joueur éligible.</div>}
+                                </div>
+                            </div>
+                        </form>
+                    </Modal>
+                </div>
+            );
+        };
+
+        const BracketView = ({ tournament, matches, players, ranks, isAdmin, onMatchUpdate, onDraw, goBack, onOpenStats }) => {
+            const [editMatch, setEditMatch] = useState(null);
+            const allR0Units = useMemo(() => {
+                const units = [];
+                if (!tournament || !matches) return units;
+                matches.filter(m => m.tournamentId === tournament.id && m.round === 0).forEach(m => {
+                    if (m.p1Ids && m.p1Ids.length > 0) units.push({ id: `p1-${m.id}`, ps: m.p1Ids });
+                    if (m.p2Ids && m.p2Ids.length > 0) units.push({ id: `p2-${m.id}`, ps: m.p2Ids });
+                });
+                return units;
+            }, [tournament, matches]);
+            if (!tournament) return null;
+            const tMatches = matches.filter(m => m.tournamentId === tournament.id);
+            const handleUpdate = () => { onMatchUpdate(editMatch); setEditMatch(null); };
+            const renderNames = ids => {
+                if (!ids || ids.length === 0) return <span className="text-gray-300 italic">...</span>;
+                return ids.map((id, i) => <span key={id} onClick={e => { e.stopPropagation(); onOpenStats(players.find(p => p.id === id)); }} className="hover:text-[#D35400] cursor-pointer inline-flex items-center">{players.find(p => p.id === id)?.lastName}{i < ids.length - 1 && <span className="mx-1 text-gray-400">/</span>}</span>);
+            };
+            return (
+                <div className="animate-enter">
+                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-6">
+                        <div className="flex items-center gap-4"><Button variant="secondary" onClick={goBack}>Retour</Button><h2 className="text-xl font-heading font-bold">{tournament.name}</h2></div>
+                        {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage</Button>}
+                    </div>
+                    {tournament.status !== 'draft' && (
+                        <div className="flex gap-8 overflow-x-auto pb-10" style={{ minHeight: '600px' }}>
+                            {Array.from({ length: Math.log2(tournament.bracketSize) }).map((_, rIdx) => {
+                                const mCount = tournament.bracketSize / Math.pow(2, rIdx + 1);
+                                return (
+                                    <div key={rIdx} className="w-56 flex flex-col relative shrink-0">
+                                        <div className="text-center mb-4 shrink-0"><span className="bg-[#0B3D2B] text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase">{rIdx === Math.log2(tournament.bracketSize) - 1 ? 'Finale' : `Tour ${rIdx + 1}`}</span></div>
+                                        <div className="flex-1 flex flex-col w-full">
+                                            {Array.from({ length: mCount }).map((__, mIdx) => {
+                                                const m = tMatches.find(tm => tm.round === rIdx && tm.index === mIdx);
+                                                return (
+                                                    <div key={mIdx} className="w-full relative flex-1 flex items-center justify-center py-2">
+                                                        {m ? (
+                                                            <div onClick={() => { if (isAdmin && m.status !== 'bye') setEditMatch({ ...m }) }} className={`w-full bg-white rounded-xl shadow-sm border flex flex-col transition-all ${isAdmin ? 'cursor-pointer hover:border-[#D35400]' : ''} ${m.status === 'bye' ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
+                                                                {(m.date || m.time || m.court) && <div className="flex gap-1 bg-gray-50/80 rounded-t-xl px-2 py-1 items-center justify-center text-[8.5px] text-gray-500 font-bold uppercase border-b border-gray-100 flex-wrap">
+                                                                    {m.date && <span className="text-blue-600">📅 {m.date.split('-').reverse().slice(0, 2).join('/')}</span>}
+                                                                    {m.time && <span className="text-orange-600">⏰ {m.time}</span>}
+                                                                    {m.court && <span className="text-green-700">🏟️ CT.{m.court}</span>}
+                                                                </div>}
+                                                                <div className="p-2">
+                                                                    {[{ ps: m.p1Ids, id: 'p1' }, { ps: m.p2Ids, id: 'p2' }].map((slot, i) => {
+                                                                        const isW = m.winnerId === slot.id;
+                                                                        const sW = m.scores.reduce((a, s) => a + (slot.id === 'p1' ? (s.p1 > s.p2 ? 1 : 0) : (s.p2 > s.p1 ? 1 : 0)), 0);
+                                                                        return (
+                                                                            <div key={i} className={`flex justify-between items-center text-xs p-1.5 ${i === 0 ? 'border-b border-gray-100' : ''} ${isW ? 'bg-orange-50 font-bold text-[#D35400]' : ''}`}>
+                                                                                <div className="truncate flex items-center gap-1.5">{renderNames(slot.ps)}{isW && rIdx === Math.log2(tournament.bracketSize) - 1 && <span className="text-yellow-500 text-[10px]">🏆</span>}</div>
+                                                                                {m.status !== 'bye' && <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                                                                                    <div className="flex gap-1">{m.scores.map((s, idx) => {
+                                                                                        if (s.p1 === 0 && s.p2 === 0 && m.scores.every(x => x.p1 === 0 && x.p2 === 0)) return null;
+                                                                                        if (s.p1 === 0 && s.p2 === 0 && idx > 0) return null;
+                                                                                        const sVal = slot.id === 'p1' ? s.p1 : s.p2, opVal = slot.id === 'p1' ? s.p2 : s.p1;
+                                                                                        return <span key={idx} className={`text-[10px] w-2.5 text-center ${sVal > opVal ? 'font-bold text-gray-800' : 'text-gray-400'}`}>{sVal}</span>;
+                                                                                    })}</div>
+                                                                                    <div className={`w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center ${sW >= 2 ? 'bg-[#0B3D2B] text-white' : 'bg-gray-100 text-gray-500'}`}>{sW}</div>
+                                                                                </div>}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ) : <div className="w-full h-16 border-2 border-dashed rounded-xl border-gray-200"></div>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {tournament.status === 'completed' && (
+                                <div className="w-56 flex flex-col relative shrink-0">
+                                    <div className="text-center mb-4 shrink-0"><span className="bg-yellow-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase">Vainqueur</span></div>
+                                    <div className="flex-1 flex flex-col w-full">
+                                        <div className="w-full relative flex-1 flex items-center justify-center py-2">
+                                            {(() => {
+                                                const fr = Math.log2(tournament.bracketSize) - 1;
+                                                const fm = tMatches.find(m => m.round === fr && m.index === 0);
+                                                const wIds = fm?.winnerId === 'p1' ? fm.p1Ids : (fm?.winnerId === 'p2' ? fm.p2Ids : null);
+                                                return wIds && wIds.length > 0 ? (
+                                                    <div className="w-full bg-gradient-to-br from-[#0B3D2B] to-[#082a1d] rounded-2xl shadow-xl border-2 border-yellow-500/50 p-6 flex flex-col items-center justify-center gap-3 group">
+                                                        <span className="text-5xl drop-shadow-lg group-hover:scale-110 transition-transform">🏆</span>
+                                                        <div className="text-center w-full">
+                                                            <div className="text-yellow-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-1">Champion</div>
+                                                            <div className="text-white font-heading text-lg font-black tracking-wide break-words">{renderNames(wIds)}</div>
                                                         </div>
                                                     </div>
-                                                ) : <div className="w-full h-16 border-2 border-dashed rounded-xl border-gray-200"></div>}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {tournament.status === 'completed' && (
-                        <div className="w-56 flex flex-col relative shrink-0">
-                            <div className="text-center mb-4 shrink-0"><span className="bg-yellow-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase">Vainqueur</span></div>
-                            <div className="flex-1 flex flex-col w-full">
-                                <div className="w-full relative flex-1 flex items-center justify-center py-2">
-                                    {(() => {
-                                        const fr = Math.log2(tournament.bracketSize) - 1;
-                                        const fm = tMatches.find(m => m.round === fr && m.index === 0);
-                                        const wIds = fm?.winnerId === 'p1' ? fm.p1Ids : (fm?.winnerId === 'p2' ? fm.p2Ids : null);
-                                        return wIds && wIds.length > 0 ? (
-                                            <div className="w-full bg-gradient-to-br from-[#0B3D2B] to-[#082a1d] rounded-2xl shadow-xl border-2 border-yellow-500/50 p-6 flex flex-col items-center justify-center gap-3 group">
-                                                <span className="text-5xl drop-shadow-lg group-hover:scale-110 transition-transform">🏆</span>
-                                                <div className="text-center w-full">
-                                                    <div className="text-yellow-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-1">Champion</div>
-                                                    <div className="text-white font-heading text-lg font-black tracking-wide break-words">{renderNames(wIds)}</div>
-                                                </div>
-                                            </div>
-                                        ) : null;
-                                    })()}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-            <Modal isOpen={!!editMatch} onClose={() => setEditMatch(null)} title={editMatch?.round === 0 ? "Ajustement & Arbitrage" : "Arbitrage - Enregistrement Score"}>
-                {editMatch && <div className="space-y-6">
-                    {isAdmin && editMatch.round === 0 && !editMatch.winnerId && (
-                        <div className="p-3 bg-orange-50/50 border border-orange-100 rounded-xl">
-                            <p className="text-[10px] font-bold text-[#D35400] uppercase tracking-wider mb-3">Ajustement Manuel du Tirage</p>
-                            <div className="space-y-2">
-                                {['p1', 'p2'].map(slotId => (
-                                    <div key={slotId} className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-semibold text-gray-500 uppercase">Joueur {slotId === 'p1' ? 'Haut' : 'Bas'}</span>
-                                        <select className="w-full p-2 border rounded-lg bg-white text-xs font-bold outline-none focus:border-[#D35400]" value={JSON.stringify(editMatch[`${slotId}Ids`])} onChange={e => { const newIds = JSON.parse(e.target.value); setEditMatch({ ...editMatch, [`${slotId}Ids`]: newIds }); }}>
-                                            <option value="[]">-- VIDE (BYE) --</option>
-                                            {allR0Units.map(u => <option key={u.id} value={JSON.stringify(u.ps)}>{u.ps.map(pid => players.find(p => p.id === pid)?.lastName).join(' / ')}</option>)}
-                                        </select>
+                                                ) : null;
+                                            })()}
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
-                            <p className="text-[9px] text-orange-600/80 mt-2 italic">*Pour faire un échange, modifiez un match puis l'autre.</p>
+                                </div>
+                            )}
                         </div>
                     )}
-                    <div className="grid grid-cols-3 gap-3 p-3 bg-gray-50 rounded-xl border">
-                        <div className="flex flex-col gap-1"><span className="text-[10px] uppercase font-bold text-gray-500">Date</span><input type="date" className="p-2 border rounded bg-white text-xs outline-none focus:border-[#D35400]" value={editMatch.date || ''} onChange={e => setEditMatch({ ...editMatch, date: e.target.value })} /></div>
-                        <div className="flex flex-col gap-1"><span className="text-[10px] uppercase font-bold text-gray-500">Heure</span><input type="time" className="p-2 border rounded bg-white text-xs outline-none focus:border-[#D35400]" value={editMatch.time || ''} onChange={e => setEditMatch({ ...editMatch, time: e.target.value })} /></div>
-                        <div className="flex flex-col gap-1"><span className="text-[10px] uppercase font-bold text-gray-500">Court</span>
-                            <select className="p-2 border rounded bg-white text-xs outline-none focus:border-[#D35400]" value={editMatch.court || ''} onChange={e => setEditMatch({ ...editMatch, court: e.target.value })}>
-                                <option value="">--</option><option value="1">Court 1</option><option value="2">Court 2</option><option value="3">Court 3</option>
+                    <Modal isOpen={!!editMatch} onClose={() => setEditMatch(null)} title={editMatch?.round === 0 ? "Ajustement & Arbitrage" : "Arbitrage - Enregistrement Score"}>
+                        {editMatch && <div className="space-y-6">
+                            {isAdmin && editMatch.round === 0 && !editMatch.winnerId && (
+                                <div className="p-3 bg-orange-50/50 border border-orange-100 rounded-xl">
+                                    <p className="text-[10px] font-bold text-[#D35400] uppercase tracking-wider mb-3">Ajustement Manuel du Tirage</p>
+                                    <div className="space-y-2">
+                                        {['p1', 'p2'].map(slotId => (
+                                            <div key={slotId} className="flex flex-col gap-1">
+                                                <span className="text-[10px] font-semibold text-gray-500 uppercase">Joueur {slotId === 'p1' ? 'Haut' : 'Bas'}</span>
+                                                <select className="w-full p-2 border rounded-lg bg-white text-xs font-bold outline-none focus:border-[#D35400]" value={JSON.stringify(editMatch[`${slotId}Ids`])} onChange={e => { const newIds = JSON.parse(e.target.value); setEditMatch({ ...editMatch, [`${slotId}Ids`]: newIds }); }}>
+                                                    <option value="[]">-- VIDE (BYE) --</option>
+                                                    {allR0Units.map(u => <option key={u.id} value={JSON.stringify(u.ps)}>{u.ps.map(pid => players.find(p => p.id === pid)?.lastName).join(' / ')}</option>)}
+                                                </select>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-[9px] text-orange-600/80 mt-2 italic">*Pour faire un échange, modifiez un match puis l'autre.</p>
+                                </div>
+                            )}
+                            <div className="grid grid-cols-3 gap-3 p-3 bg-gray-50 rounded-xl border">
+                                <div className="flex flex-col gap-1"><span className="text-[10px] uppercase font-bold text-gray-500">Date</span><input type="date" className="p-2 border rounded bg-white text-xs outline-none focus:border-[#D35400]" value={editMatch.date || ''} onChange={e => setEditMatch({ ...editMatch, date: e.target.value })} /></div>
+                                <div className="flex flex-col gap-1"><span className="text-[10px] uppercase font-bold text-gray-500">Heure</span><input type="time" className="p-2 border rounded bg-white text-xs outline-none focus:border-[#D35400]" value={editMatch.time || ''} onChange={e => setEditMatch({ ...editMatch, time: e.target.value })} /></div>
+                                <div className="flex flex-col gap-1"><span className="text-[10px] uppercase font-bold text-gray-500">Court</span>
+                                    <select className="p-2 border rounded bg-white text-xs outline-none focus:border-[#D35400]" value={editMatch.court || ''} onChange={e => setEditMatch({ ...editMatch, court: e.target.value })}>
+                                        <option value="">--</option><option value="1">Court 1</option><option value="2">Court 2</option><option value="3">Court 3</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {[{ ps: editMatch.p1Ids, id: 'p1' }, { ps: editMatch.p2Ids, id: 'p2' }].map(slot => (
+                                <div key={slot.id} className="p-4 bg-gray-50 rounded-xl border flex justify-between items-center">
+                                    <div className="font-bold text-sm uppercase">{renderNames(slot.ps)}</div>
+                                    <div className="flex gap-2">
+                                        {editMatch.scores.map((s, i) => (
+                                            <input key={i} type="number" className="w-10 h-10 text-center font-bold text-lg border rounded-lg focus:border-[#D35400] outline-none"
+                                                value={slot.id === 'p1' ? s.p1 : s.p2}
+                                                onChange={e => { const ns = [...editMatch.scores]; ns[i][slot.id] = Number(e.target.value); setEditMatch({ ...editMatch, scores: ns }); }} />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                            <div className="grid grid-cols-2 gap-4">
+                                <Button variant={editMatch.winnerId === 'p1' ? 'primary' : 'secondary'} onClick={() => setEditMatch({ ...editMatch, winnerId: 'p1' })}>Haut gagne</Button>
+                                <Button variant={editMatch.winnerId === 'p2' ? 'primary' : 'secondary'} onClick={() => setEditMatch({ ...editMatch, winnerId: 'p2' })}>Bas gagne</Button>
+                            </div>
+                            <Button className="w-full" onClick={handleUpdate}>{editMatch.winnerId ? 'Valider Match' : 'Enregistrer'}</Button>
+                        </div>}
+                    </Modal>
+                </div>
+            );
+        };
+
+        const RankingView = ({ players, matches, tournaments, year, onOpenStats }) => {
+            const ranks = useMemo(() => {
+                const map = {}; players.forEach(p => map[p.id] = { ...p, pts: 0 });
+                tournaments.filter(t => t.year === year).forEach(t => {
+                    const tPts = t.points || 200, maxR = Math.log2(t.bracketSize);
+                    matches.filter(m => m.tournamentId === t.id && m.status === 'completed').forEach(m => {
+                        const w = m.winnerId === 'p1' ? m.p1Ids : m.p2Ids, l = m.winnerId === 'p1' ? m.p2Ids : m.p1Ids;
+                        if (m.round === maxR - 1) { w.forEach(id => { if (map[id]) map[id].pts += tPts; }); l.forEach(id => { if (map[id]) map[id].pts += Math.round(tPts * 0.6); }); }
+                        else if (m.round === maxR - 2) { l.forEach(id => { if (map[id]) map[id].pts += Math.round(tPts * 0.35); }); }
+                        else if (m.round === maxR - 3) { l.forEach(id => { if (map[id]) map[id].pts += Math.round(tPts * 0.15); }); }
+                    });
+                });
+                return Object.values(map).sort((a, b) => b.pts - a.pts).filter(p => p.pts > 0);
+            }, [players, matches, tournaments, year]);
+            return (
+                <div className="animate-enter bg-white rounded-2xl shadow-sm border p-6">
+                    <h2 className="text-xl font-heading font-bold mb-6">Classement {year}</h2>
+                    <table className="w-full text-left">
+                        <thead className="text-[10px] font-bold uppercase text-gray-400 border-b">
+                            <tr><th className="pb-3 text-center w-16">Rang</th><th className="pb-3">Joueur</th><th className="pb-3 text-right">Points</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {ranks.map((p, i) => (
+                                <tr key={p.id} onClick={() => onOpenStats(p)} className="hover:bg-orange-50 cursor-pointer transition-colors">
+                                    <td className="py-4 text-center font-black text-gray-300 text-lg">#{i + 1}</td>
+                                    <td className="py-4 font-bold uppercase flex items-center gap-3"><div className="w-8 h-8 rounded-full overflow-hidden bg-gray-100">{p.photo ? <img src={p.photo} className="w-full h-full object-cover" /> : <div className="w-8 h-8 text-center text-[10px] flex items-center justify-center text-gray-400">{p.firstName[0]}</div>}</div>{p.lastName} {p.firstName}</td>
+                                    <td className="py-4 text-right font-black text-[#D35400] text-lg">{p.pts}</td>
+                                </tr>
+                            ))}
+                            {ranks.length === 0 && <tr><td colSpan="3" className="text-center py-8 text-gray-400">Aucun point attribué en {year}</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 5. APP PRINCIPALE
+        // ==========================================
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('ranking');
+            const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+            const [toast, setToast] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [showAdminModal, setShowAdminModal] = useState(false);
+            const [password, setPassword] = useState('');
+            const [players, setPlayers] = useState([]);
+            const [tournaments, setTournaments] = useState([]);
+            const [matches, setMatches] = useState([]);
+            const [statsPlayer, setStatsPlayer] = useState(null);
+            const [viewTourney, setViewTourney] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            const showT = (msg, d = 3000) => setToast({ message: msg, type: 'success', duration: d });
+
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        setLoading(true);
+                        setPlayers(await InsForgeAPI.getPlayers());
+                        setTournaments(await InsForgeAPI.getTournaments());
+                        setMatches(await InsForgeAPI.getMatches());
+                    } catch (e) {
+                        console.error(e);
+                        setToast({ message: "Erreur de connexion à la base", type: 'error', duration: 5000 });
+                    } finally { setLoading(false); }
+                };
+                init();
+            }, []);
+
+            const buildRanks = () => {
+                const map = {};
+                tournaments.filter(t => t.year === selectedYear).forEach(t => {
+                    const fm = matches.find(m => m.tournamentId === t.id && m.round === Math.log2(t.bracketSize) - 1);
+                    if (fm && fm.status === 'completed') { const w = fm.winnerId === 'p1' ? fm.p1Ids : fm.p2Ids; w.forEach(id => { map[id] = (map[id] || 0) + (t.points || 200); }); }
+                });
+                return map;
+            };
+
+            const toggleAdmin = () => { if (isAdmin) { setIsAdmin(false); showT("Déconnexion Admin"); } else setShowAdminModal(true); };
+            const handleLogin = e => { e.preventDefault(); if (password === "Yahia_02102021") { setIsAdmin(true); setShowAdminModal(false); setPassword(''); showT("Admin OK", 800); } else alert("Mot de passe incorrect"); };
+
+            if (loading) return (
+                <div className="min-h-screen flex items-center justify-center bg-[#F9F6F0]">
+                    <div className="text-center"><div className="text-4xl mb-4">🎾</div><p className="font-heading font-bold text-[#0B3D2B]">Chargement...</p></div>
+                </div>
+            );
+
+            const tViews = {
+                ranking: <RankingView players={players} matches={matches} tournaments={tournaments} year={selectedYear} onOpenStats={setStatsPlayer} />,
+                players: <PlayersManager players={players} isAdmin={isAdmin}
+                    onAddPlayer={async d => { const np = await InsForgeAPI.createPlayer(d); setPlayers(prev => [...prev, np]); showT("Ajouté"); }}
+                    onUpdatePlayer={async (id, d) => { const up = await InsForgeAPI.updatePlayer(id, d); setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...up } : p)); showT("Modifié"); }}
+                    onDeletePlayer={async id => { await InsForgeAPI.deletePlayer(id); setPlayers(prev => prev.filter(p => p.id !== id)); showT("Supprimé"); }}
+                    onOpenStats={setStatsPlayer} />,
+                tournaments: <TournamentsManager tournaments={tournaments.filter(t => t.year === selectedYear)} players={players} year={selectedYear} isAdmin={isAdmin}
+                    onCreate={async d => { const nt = await InsForgeAPI.createTournament(d); setTournaments(prev => [...prev, nt]); const nm = await InsForgeAPI.getMatches(); setMatches(nm); showT("Créé"); }}
+                    onUpdate={async (id, d) => { const up = await InsForgeAPI.updateTournament(id, d); setTournaments(prev => prev.map(t => t.id === id ? { ...t, ...up } : t)); showT("Modifié"); }}
+                    onDelete={async id => { await InsForgeAPI.deleteTournament(id); setTournaments(prev => prev.filter(t => t.id !== id)); showT("Supprimé"); }}
+                    onSelectTourney={id => { setViewTourney(id); setActiveTab('brackets'); }} />,
+                brackets: viewTourney ?
+                    <BracketView tournament={tournaments.find(t => t.id === viewTourney)} matches={matches} players={players} ranks={buildRanks()} isAdmin={isAdmin}
+                        onMatchUpdate={async m => { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); showT("Score sauvé"); }}
+                        onDraw={async (tid, parts, type, size, rks) => { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); }}
+                        goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
+                    : <div className="animate-enter space-y-6">
+                        <h2 className="text-xl font-heading font-bold">Sélectionnez un tableau ({selectedYear})</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {tournaments.filter(t => t.year === selectedYear).map(t => (
+                                <div key={t.id} onClick={() => setViewTourney(t.id)} className="glass-panel p-6 rounded-2xl border-t-4 border-t-[#D35400] hover:shadow-lg transition-all cursor-pointer">
+                                    <div className="flex items-center gap-3 mb-2"><div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden">{t.logo ? <img src={t.logo} /> : <Icons.Trophy />}</div><h3 className="font-heading font-bold text-lg">{t.name}</h3></div>
+                                    <p className="text-xs text-gray-500">{t.type} • {t.category}</p>
+                                </div>
+                            ))}
+                        </div>
+                        {tournaments.filter(t => t.year === selectedYear).length === 0 && <p className="text-gray-400 italic">Aucun tournoi trouvé pour {selectedYear}.</p>}
+                    </div>
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row min-h-screen">
+                    <aside className="w-full md:w-64 bg-[#0B3D2B] text-white shadow-xl z-20 sticky top-0 md:h-screen flex flex-col">
+                        <div className="p-6 flex items-center justify-between border-b border-white/10">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-[#D35400] p-2 rounded-lg"><Icons.Trophy /></div>
+                                <div><h1 className="font-heading font-extrabold text-base leading-tight whitespace-nowrap">CLUB FELLAH</h1><p className="text-[6px] uppercase tracking-widest text-white/50">{isAdmin ? 'ADMINISTRATEUR' : 'MODE PUBLIC'}</p></div>
+                            </div>
+                            <button onClick={toggleAdmin} className={`p-2 rounded-full transition-all ${isAdmin ? 'bg-orange-500' : 'bg-white/10 hover:bg-white/20'}`}><Icons.Settings /></button>
+                        </div>
+                        <nav className="flex-1 p-4 flex md:flex-col gap-2 overflow-x-auto">
+                            {[{ id: 'ranking', l: 'Classement', i: Icons.TrendingUp }, { id: 'tournaments', l: 'Tournois', i: Icons.Trophy }, { id: 'brackets', l: 'Tableaux', i: Icons.Shuffle }, { id: 'players', l: 'Joueurs', i: Icons.Users }].map(item => (
+                                <button key={item.id} onClick={() => { setActiveTab(item.id); if (item.id !== 'brackets' || activeTab === 'brackets') setViewTourney(null); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm ${activeTab === item.id ? 'bg-[#D35400] shadow-lg' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}><item.i /> {item.l}</button>
+                            ))}
+                        </nav>
+                        <div className="p-4 border-t border-white/10">
+                            <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="w-full bg-black/20 text-white font-bold p-2 rounded-lg border border-white/10 outline-none">
+                                <option>2024</option><option>2025</option><option>2026</option>
                             </select>
                         </div>
-                    </div>
-                    {[{ ps: editMatch.p1Ids, id: 'p1' }, { ps: editMatch.p2Ids, id: 'p2' }].map(slot => (
-                        <div key={slot.id} className="p-4 bg-gray-50 rounded-xl border flex justify-between items-center">
-                            <div className="font-bold text-sm uppercase">{renderNames(slot.ps)}</div>
-                            <div className="flex gap-2">
-                                {editMatch.scores.map((s, i) => (
-                                    <input key={i} type="number" className="w-10 h-10 text-center font-bold text-lg border rounded-lg focus:border-[#D35400] outline-none"
-                                        value={slot.id === 'p1' ? s.p1 : s.p2}
-                                        onChange={e => { const ns = [...editMatch.scores]; ns[i][slot.id] = Number(e.target.value); setEditMatch({ ...editMatch, scores: ns }); }} />
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                    <div className="grid grid-cols-2 gap-4">
-                        <Button variant={editMatch.winnerId === 'p1' ? 'primary' : 'secondary'} onClick={() => setEditMatch({ ...editMatch, winnerId: 'p1' })}>Haut gagne</Button>
-                        <Button variant={editMatch.winnerId === 'p2' ? 'primary' : 'secondary'} onClick={() => setEditMatch({ ...editMatch, winnerId: 'p2' })}>Bas gagne</Button>
-                    </div>
-                    <Button className="w-full" onClick={handleUpdate}>{editMatch.winnerId ? 'Valider Match' : 'Enregistrer'}</Button>
-                </div>}
-            </Modal>
-        </div>
-    );
-};
-
-const RankingView = ({ players, matches, tournaments, year, onOpenStats }) => {
-    const ranks = useMemo(() => {
-        const map = {}; players.forEach(p => map[p.id] = { ...p, pts: 0 });
-        tournaments.filter(t => t.year === year).forEach(t => {
-            const tPts = t.points || 200, maxR = Math.log2(t.bracketSize);
-            matches.filter(m => m.tournamentId === t.id && m.status === 'completed').forEach(m => {
-                const w = m.winnerId === 'p1' ? m.p1Ids : m.p2Ids, l = m.winnerId === 'p1' ? m.p2Ids : m.p1Ids;
-                if (m.round === maxR - 1) { w.forEach(id => { if (map[id]) map[id].pts += tPts; }); l.forEach(id => { if (map[id]) map[id].pts += Math.round(tPts * 0.6); }); }
-                else if (m.round === maxR - 2) { l.forEach(id => { if (map[id]) map[id].pts += Math.round(tPts * 0.35); }); }
-                else if (m.round === maxR - 3) { l.forEach(id => { if (map[id]) map[id].pts += Math.round(tPts * 0.15); }); }
-            });
-        });
-        return Object.values(map).sort((a, b) => b.pts - a.pts).filter(p => p.pts > 0);
-    }, [players, matches, tournaments, year]);
-    return (
-        <div className="animate-enter bg-white rounded-2xl shadow-sm border p-6">
-            <h2 className="text-xl font-heading font-bold mb-6">Classement {year}</h2>
-            <table className="w-full text-left">
-                <thead className="text-[10px] font-bold uppercase text-gray-400 border-b">
-                    <tr><th className="pb-3 text-center w-16">Rang</th><th className="pb-3">Joueur</th><th className="pb-3 text-right">Points</th></tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {ranks.map((p, i) => (
-                        <tr key={p.id} onClick={() => onOpenStats(p)} className="hover:bg-orange-50 cursor-pointer transition-colors">
-                            <td className="py-4 text-center font-black text-gray-300 text-lg">#{i + 1}</td>
-                            <td className="py-4 font-bold uppercase flex items-center gap-3"><div className="w-8 h-8 rounded-full overflow-hidden bg-gray-100">{p.photo ? <img src={p.photo} className="w-full h-full object-cover" /> : <div className="w-8 h-8 text-center text-[10px] flex items-center justify-center text-gray-400">{p.firstName[0]}</div>}</div>{p.lastName} {p.firstName}</td>
-                            <td className="py-4 text-right font-black text-[#D35400] text-lg">{p.pts}</td>
-                        </tr>
-                    ))}
-                    {ranks.length === 0 && <tr><td colSpan="3" className="text-center py-8 text-gray-400">Aucun point attribué en {year}</td></tr>}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-// ==========================================
-// 5. APP PRINCIPALE
-// ==========================================
-const App = () => {
-    const [activeTab, setActiveTab] = useState('ranking');
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [toast, setToast] = useState(null);
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [showAdminModal, setShowAdminModal] = useState(false);
-    const [password, setPassword] = useState('');
-    const [players, setPlayers] = useState([]);
-    const [tournaments, setTournaments] = useState([]);
-    const [matches, setMatches] = useState([]);
-    const [statsPlayer, setStatsPlayer] = useState(null);
-    const [viewTourney, setViewTourney] = useState(null);
-    const [loading, setLoading] = useState(true);
-
-    const showT = (msg, d = 3000) => setToast({ message: msg, type: 'success', duration: d });
-
-    useEffect(() => {
-        const init = async () => {
-            try {
-                setLoading(true);
-                setPlayers(await InsForgeAPI.getPlayers());
-                setTournaments(await InsForgeAPI.getTournaments());
-                setMatches(await InsForgeAPI.getMatches());
-            } catch (e) {
-                console.error(e);
-                setToast({ message: "Erreur de connexion à la base", type: 'error', duration: 5000 });
-            } finally { setLoading(false); }
+                    </aside>
+                    <main className="flex-1 p-4 md:p-8 w-full max-w-7xl mx-auto">{tViews[activeTab]}</main>
+                    {statsPlayer && <PlayerStatsModal player={statsPlayer} allMatches={matches} tournaments={tournaments} onClose={() => setStatsPlayer(null)} />}
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} duration={toast.duration} />}
+                    <Modal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} title="Accès Organisateur">
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <p className="text-sm text-gray-500">Saisissez le mot de passe maître pour modifier les données.</p>
+                            <input type="password" placeholder="••••" className="w-full p-4 text-center tracking-widest text-2xl border rounded-xl" autoFocus value={password} onChange={e => setPassword(e.target.value)} />
+                            <Button type="submit" className="w-full">S'authentifier</Button>
+                        </form>
+                    </Modal>
+                </div>
+            );
         };
-        init();
-    }, []);
 
-    const buildRanks = () => {
-        const map = {};
-        tournaments.filter(t => t.year === selectedYear).forEach(t => {
-            const fm = matches.find(m => m.tournamentId === t.id && m.round === Math.log2(t.bracketSize) - 1);
-            if (fm && fm.status === 'completed') { const w = fm.winnerId === 'p1' ? fm.p1Ids : fm.p2Ids; w.forEach(id => { map[id] = (map[id] || 0) + (t.points || 200); }); }
-        });
-        return map;
-    };
-
-    const toggleAdmin = () => { if (isAdmin) { setIsAdmin(false); showT("Déconnexion Admin"); } else setShowAdminModal(true); };
-    const handleLogin = e => { e.preventDefault(); if (password === "Yahia_02102021") { setIsAdmin(true); setShowAdminModal(false); setPassword(''); showT("Admin OK", 800); } else alert("Mot de passe incorrect"); };
-
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-[#F9F6F0]">
-            <div className="text-center"><div className="text-4xl mb-4">🎾</div><p className="font-heading font-bold text-[#0B3D2B]">Chargement...</p></div>
-        </div>
-    );
-
-    const tViews = {
-        ranking: <RankingView players={players} matches={matches} tournaments={tournaments} year={selectedYear} onOpenStats={setStatsPlayer} />,
-        players: <PlayersManager 
-    players={players} 
-    isAdmin={isAdmin}
-    onAddPlayer={async (d) => { 
-        try {
-            const newPlayer = await InsForgeAPI.createPlayer(d);
-            // On ajoute le nouveau joueur à la liste existante pour forcer le refresh
-            setPlayers(prevPlayers => [...prevPlayers, newPlayer]); 
-            showT("Joueur ajouté avec succès !");
-        } catch (e) {
-            showT("Erreur lors de l'ajout", 5000);
-        }
-    }}
-    onUpdatePlayer={async (id, d) => { 
-        const updatedPlayer = await InsForgeAPI.updatePlayer(id, d);
-        // On remplace l'ancien joueur par le nouveau dans l'état
-        setPlayers(prevPlayers => prevPlayers.map(p => p.id === id ? updatedPlayer : p)); 
-        showT("Profil modifié");
-    }}
-    onDeletePlayer={async (id) => { 
-        await InsForgeAPI.deletePlayer(id);
-        // On filtre la liste pour enlever le joueur supprimé
-        setPlayers(prevPlayers => prevPlayers.filter(p => p.id !== id)); 
-        showT("Joueur supprimé");
-    }}
-    onOpenStats={setStatsPlayer} 
-/>,
-        tournaments: <TournamentsManager tournaments={tournaments.filter(t => t.year === selectedYear)} players={players} year={selectedYear} isAdmin={isAdmin}
-            onCreate={async d => { setTournaments([...tournaments, await InsForgeAPI.createTournament(d)]); setMatches(await InsForgeAPI.getMatches()); showT("Créé"); }}
-            onUpdate={async (id, d) => { const up = await InsForgeAPI.updateTournament(id, d); setTournaments(tournaments.map(t => t.id === id ? up : t)); showT("Modifié"); }}
-            onDelete={async id => { await InsForgeAPI.deleteTournament(id); setTournaments(tournaments.filter(t => t.id !== id)); showT("Supprimé"); }}
-            onSelectTourney={id => { setViewTourney(id); setActiveTab('brackets'); }} />,
-        brackets: viewTourney ?
-            <BracketView tournament={tournaments.find(t => t.id === viewTourney)} matches={matches} players={players} ranks={buildRanks()} isAdmin={isAdmin}
-                onMatchUpdate={async m => { setMatches(await InsForgeAPI.updateMatch(m)); showT("Score sauvé"); }}
-onDraw={async (tid, parts, type, size, rks) => { 
-    const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); 
-    setTournaments(t); // Mise à jour de l'état des tournois
-    setMatches(m);     // Mise à jour de l'état des matchs
-    showT("Arbre généré et affiché !"); 
-}}                goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
-            : <div className="animate-enter space-y-6">
-                <h2 className="text-xl font-heading font-bold">Sélectionnez un tableau ({selectedYear})</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {tournaments.filter(t => t.year === selectedYear).map(t => (
-                        <div key={t.id} onClick={() => setViewTourney(t.id)} className="glass-panel p-6 rounded-2xl border-t-4 border-t-[#D35400] hover:shadow-lg transition-all cursor-pointer">
-                            <div className="flex items-center gap-3 mb-2"><div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden">{t.logo ? <img src={t.logo} /> : <Icons.Trophy />}</div><h3 className="font-heading font-bold text-lg">{t.name}</h3></div>
-                            <p className="text-xs text-gray-500">{t.type} • {t.category}</p>
-                        </div>
-                    ))}
-                </div>
-                {tournaments.filter(t => t.year === selectedYear).length === 0 && <p className="text-gray-400 italic">Aucun tournoi trouvé pour {selectedYear}.</p>}
-            </div>
-    };
-
-    return (
-        <div className="flex flex-col md:flex-row min-h-screen">
-            <aside className="w-full md:w-64 bg-[#0B3D2B] text-white shadow-xl z-20 sticky top-0 md:h-screen flex flex-col">
-                <div className="p-6 flex items-center justify-between border-b border-white/10">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-[#D35400] p-2 rounded-lg"><Icons.Trophy /></div>
-                        <div><h1 className="font-heading font-extrabold text-base leading-tight whitespace-nowrap">CLUB FELLAH</h1><p className="text-[6px] uppercase tracking-widest text-white/50">{isAdmin ? 'ADMINISTRATEUR' : 'MODE PUBLIC'}</p></div>
-                    </div>
-                    <button onClick={toggleAdmin} className={`p-2 rounded-full transition-all ${isAdmin ? 'bg-orange-500' : 'bg-white/10 hover:bg-white/20'}`}><Icons.Settings /></button>
-                </div>
-                <nav className="flex-1 p-4 flex md:flex-col gap-2 overflow-x-auto">
-                    {[{ id: 'ranking', l: 'Classement', i: Icons.TrendingUp }, { id: 'tournaments', l: 'Tournois', i: Icons.Trophy }, { id: 'brackets', l: 'Tableaux', i: Icons.Shuffle }, { id: 'players', l: 'Joueurs', i: Icons.Users }].map(item => (
-                        <button key={item.id} onClick={() => { setActiveTab(item.id); if (item.id !== 'brackets' || activeTab === 'brackets') setViewTourney(null); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm ${activeTab === item.id ? 'bg-[#D35400] shadow-lg' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}><item.i /> {item.l}</button>
-                    ))}
-                </nav>
-                <div className="p-4 border-t border-white/10">
-                    <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="w-full bg-black/20 text-white font-bold p-2 rounded-lg border border-white/10 outline-none">
-                        <option>2024</option><option>2025</option><option>2026</option>
-                    </select>
-                </div>
-            </aside>
-            <main className="flex-1 p-4 md:p-8 w-full max-w-7xl mx-auto">{tViews[activeTab]}</main>
-            {statsPlayer && <PlayerStatsModal player={statsPlayer} allMatches={matches} tournaments={tournaments} onClose={() => setStatsPlayer(null)} />}
-            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} duration={toast.duration} />}
-            <Modal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} title="Accès Organisateur">
-                <form onSubmit={handleLogin} className="space-y-4">
-                    <p className="text-sm text-gray-500">Saisissez le mot de passe maître pour modifier les données.</p>
-                    <input type="password" placeholder="••••" className="w-full p-4 text-center tracking-widest text-2xl border rounded-xl" autoFocus value={password} onChange={e => setPassword(e.target.value)} />
-                    <Button type="submit" className="w-full">S'authentifier</Button>
-                </form>
-            </Modal>
-        </div>
-    );
-};
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 
