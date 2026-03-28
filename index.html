@@ -48,7 +48,7 @@ const H = {
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const db = async (path, method = "GET", body = null) => {
-    const res = await fetch(`${IF_URL}/rest/v1/${path}`, {
+    const res = await fetch(`${IF_URL}/api/database/records/${path}`, {
         method, headers: H,
         body: body ? JSON.stringify(body) : null
     });
