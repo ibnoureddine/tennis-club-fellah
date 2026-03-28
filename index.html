@@ -146,7 +146,7 @@
         const mapMatch = m => ({ id: m.id, tournamentId: m.tournament_id, round: m.round, index: m.index, p1Ids: m.p1_ids || [], p2Ids: m.p2_ids || [], scores: m.scores || [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winnerId: m.winner_id, status: m.status, date: m.date || '', time: m.time || '', court: m.court || '' });
 
         const InsForgeAPI = {
-            getPlayers: async () => (await db("players?order=created_at")).map(mapPlayer),
+            getPlayers: async () => (await db("players")).map(mapPlayer),
             createPlayer: async (data) => {
                 const rows = await db("players", "POST", { id: generateId(), first_name: data.firstName, last_name: data.lastName, age: data.age, handedness: data.handedness, photo: data.photo || null, points: 0 });
                 return mapPlayer(Array.isArray(rows) ? rows[0] : rows);
@@ -156,7 +156,7 @@
                 return mapPlayer(Array.isArray(rows) ? rows[0] : rows);
             },
             deletePlayer: async (id) => db(`players?id=eq.${id}`, "DELETE"),
-            getTournaments: async () => (await db("tournaments?order=created_at")).map(mapTournament),
+            getTournaments: async () => (await db("tournaments")).map(mapTournament),
             createTournament: async (data) => {
                 let bSize = [2, 4, 8, 16, 32].find(s => s >= (data.type === 'Double' ? Math.ceil(data.participantIds.length / 2) : data.participantIds.length)) || 16;
                 if (data.participantIds.length === 4 && data.type === 'Double') bSize = 2;
