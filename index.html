@@ -391,8 +391,8 @@
         const TournamentsManager = ({ tournaments, players, year, isAdmin, onCreate, onUpdate, onDelete, onSelectTourney }) => {
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [editingTourney, setEditingTourney] = useState(null);
-            const [formData, setFormData] = useState({ name: '', startDate: '', type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null });
-            const reset = () => { setIsModalOpen(false); setEditingTourney(null); setFormData({ name: '', startDate: '', type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null }); };
+            const [formData, setFormData] = useState({ name: '', startDate: new Date().toISOString().split('T')[0], type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null });
+            const reset = () => { setIsModalOpen(false); setEditingTourney(null); setFormData({ name: '', startDate: new Date().toISOString().split('T')[0], type: 'Simple', category: 'Messieurs', participantIds: [], points: 200, logo: null }); };
             const handleSubmit = e => { e.preventDefault(); if (formData.participantIds.length < 2) return alert('Minimum 2 participants'); editingTourney ? onUpdate(editingTourney.id, formData) : onCreate({ ...formData, year }); reset(); };
             const toggleParts = id => setFormData(p => ({ ...p, participantIds: p.participantIds.includes(id) ? p.participantIds.filter(x => x !== id) : [...p.participantIds, id] }));
             const handleLogo = e => { const f = e.target.files[0]; if (f) { const r = new FileReader(); r.onloadend = () => setFormData(p => ({ ...p, logo: r.result })); r.readAsDataURL(f); } };
