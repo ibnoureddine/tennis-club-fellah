@@ -146,7 +146,7 @@
         };
 
         const mapPlayer = p => ({ id: p.id, firstName: p.first_name, lastName: p.last_name, age: p.age, handedness: p.handedness, photo: p.photo, points: p.points || 0, gender: p.gender || 'M' });
-        const mapTournament = t => ({ id: t.id, name: t.name, startDate: t.start_date, points: t.points, category: t.category, type: t.type, logo: t.logo, status: t.status, bracketSize: t.bracket_size, participantIds: t.participant_ids || [], year: t.year });
+        const mapTournament = t => ({ id: t.id, name: t.name, startDate: t.start_date, points: t.points, category: t.category, type: t.type, logo: t.logo, status: t.status, bracketSize: t.bracket_size, participantIds: t.participant_ids || [], year: t.year || (t.start_date ? parseInt(t.start_date.split('-')[0]) : new Date().getFullYear()) });
         const mapMatch = m => ({ id: m.id, tournamentId: m.tournament_id, round: m.round, index: m.index, p1Ids: m.p1_ids || [], p2Ids: m.p2_ids || [], scores: m.scores || [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winnerId: m.winner_id, status: m.status, date: m.date || '', time: m.time || '', court: m.court || '' });
 
         const InsForgeAPI = {
@@ -168,7 +168,7 @@
                 let bSize = [2, 4, 8, 16, 32].find(s => s >= (data.type === 'Double' ? Math.ceil(data.participantIds.length / 2) : data.participantIds.length)) || 16;
                 if (data.participantIds.length === 4 && data.type === 'Double') bSize = 2;
                 const id = generateId();
-                await db("tournaments", "POST", { id, name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracket_size: bSize, participant_ids: data.participantIds, year: data.year });
+                await db("tournaments", "POST", { id, name: data.name, start_date: data.startDate, points: data.points, category: data.category, type: data.type, logo: data.logo || null, status: 'draft', bracket_size: bSize, participant_ids: data.participantIds });
                 const rows = await db(`tournaments?id=eq.${id}`);
                 const t = mapTournament(rows[0]);
                 const mp = [];
