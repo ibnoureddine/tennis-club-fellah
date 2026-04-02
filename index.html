@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Forcement de l'affichage en mode "Bureau" (Dézoom) sur les téléphones mobiles -->
+    <meta name="viewport" content="width=1280">
     <title>Tennis Club Fellah - Edition Elite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -506,7 +507,7 @@
                                                 return (
                                                     <div key={mIdx} className="w-full relative flex-1 flex items-center justify-center py-2">
                                                         {m ? (
-                                                            <div onClick={() => { if (isAdmin && m.status !== 'bye') setEditMatch({ ...m }) }} className={`w-full bg-white rounded-xl shadow-sm border flex flex-col transition-all ${isAdmin ? 'cursor-pointer hover:border-[#D35400]' : ''} ${m.status === 'bye' ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
+                                                            <div onClick={() => { if (isAdmin) setEditMatch({ ...m }) }} className={`w-full bg-white rounded-xl shadow-sm border flex flex-col transition-all ${isAdmin ? 'cursor-pointer hover:border-[#D35400] hover:opacity-100 hover:grayscale-0' : ''} ${m.status === 'bye' ? 'opacity-60 grayscale' : ''}`}>
                                                                 {(m.date || m.time || m.court) && <div className="flex gap-1 bg-gray-50/80 rounded-t-xl px-2 py-1 items-center justify-center text-[8.5px] text-gray-500 font-bold uppercase border-b border-gray-100 flex-wrap">
                                                                     {m.date && <span className="text-blue-600">📅 {m.date.split('-').reverse().slice(0, 2).join('/')}</span>}
                                                                     {m.time && <span className="text-orange-600">⏰ {m.time}</span>}
