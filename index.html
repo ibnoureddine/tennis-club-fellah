@@ -213,6 +213,41 @@
                 await db(`tournaments?id=eq.${tournamentId}`, "PATCH", { status: 'draft' });
                 return { t: await InsForgeAPI.getTournaments(), m: await InsForgeAPI.getMatches() };
             },
+            luckyLoser: async (tournamentId) => {
+                const allM = (await db(`matches?tournament_id=eq.${tournamentId}`)).map(mapMatch);
+                const vacancies = [];
+                allM.forEach(m => {
+                    if (m.round > 0 && m.status !== 'completed' && m.status !== 'bye') {
+                        if (!m.p1Ids || m.p1Ids.length === 0) vacancies.push({ id: m.id, slot: 'p1_ids' });
+                        if (!m.p2Ids || m.p2Ids.length === 0) vacancies.push({ id: m.id, slot: 'p2_ids' });
+                    }
+                });
+                if (vacancies.length === 0) return { t: await InsForgeAPI.getTournaments(), m: allM };
+
+                const candidates = [];
+                allM.forEach(m => {
+                    if (m.status === 'completed' && m.winnerId) {
+                        const loserIds = m.winnerId === 'p1' ? m.p2Ids : m.p1Ids;
+                        if (loserIds && loserIds.length > 0) {
+                            const alreadyAdv = allM.some(xm => xm.round > m.round && (xm.p1Ids.some(id => loserIds.includes(id)) || xm.p2Ids.some(id => loserIds.includes(id))));
+                            if (!alreadyAdv) {
+                                let won = 0, lost = 0;
+                                m.scores.forEach(s => {
+                                    won += (m.winnerId === 'p1' ? s.p2 : s.p1);
+                                    lost += (m.winnerId === 'p1' ? s.p1 : s.p2);
+                                });
+                                candidates.push({ ids: loserIds, won, lost });
+                            }
+                        }
+                    }
+                });
+
+                candidates.sort((a, b) => b.won - a.won || a.lost - b.lost);
+                for (let i = 0; i < Math.min(vacancies.length, candidates.length); i++) {
+                    await db(`matches?id=eq.${vacancies[i].id}`, "PATCH", { [vacancies[i].slot]: candidates[i].ids });
+                }
+                return { t: await InsForgeAPI.getTournaments(), m: await InsForgeAPI.getMatches() };
+            },
             autoDraw: async (tournamentId, participants, type, bracketSize, playerRanks) => {
                 let units = type === 'Double' ? participants.reduce((acc, p, i) => (i % 2 === 0 ? [...acc, [p]] : (acc[acc.length - 1].push(p), acc)), []) : participants.map(p => [p]);
                 units.sort((a, b) => { const pts = u => u.reduce((s, id) => s + (playerRanks[id] || 0), 0); return pts(b) - pts(a); });
@@ -481,7 +516,7 @@
             );
         };
 
-        const BracketView = ({ tournament, matches, players, ranks, isAdmin, onMatchUpdate, onDraw, onResetDraw, goBack, onOpenStats }) => {
+        const BracketView = ({ tournament, matches, players, ranks, isAdmin, onMatchUpdate, onDraw, onResetDraw, onLuckyLoser, goBack, onOpenStats }) => {
             const [editMatch, setEditMatch] = useState(null);
             const allR0Units = useMemo(() => {
                 const units = [];
@@ -510,6 +545,7 @@
                         <div className="flex items-center gap-4"><Button variant="secondary" onClick={goBack}>Retour</Button><h2 className="text-xl font-heading font-bold">{tournament.name}</h2></div>
                         <div className="flex items-center gap-3 shrink-0">
                             {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage Auto</Button>}
+                            {isAdmin && tournament.status !== 'draft' && tournament.status !== 'completed' && <Button variant="secondary" icon={Icons.TrendingUp} onClick={() => onLuckyLoser(tournament.id)}>Lucky Loser</Button>}
                             {isAdmin && <button onClick={() => { if (window.confirm("Êtes-vous sûr de vouloir tout vider (y compris la saisie manuelle) et remettre à zéro ?")) onResetDraw(tournament.id); }} className="flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 font-bold py-2 px-4 rounded-xl transition-all text-sm border-2 border-red-700 shadow-md whitespace-nowrap z-50 relative"><Icons.Trash /> Vider le Tableau</button>}
                         </div>
                     </div>
@@ -767,6 +803,7 @@
                         onMatchUpdate={async m => { try { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); const nt = await InsForgeAPI.getTournaments(); setTournaments(nt); showT("Score sauvé"); } catch (e) { showT("Erreur", "error"); } }}
                         onDraw={async (tid, parts, type, size, rks) => { try { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); } catch (e) { showT("Erreur génération", "error"); } }}
                         onResetDraw={async tid => { try { const { t, m } = await InsForgeAPI.resetDraw(tid); setTournaments(t); setMatches(m); showT("Tableau vidé !"); } catch (e) { showT("Erreur", "error"); } }}
+                        onLuckyLoser={async tid => { try { const { t, m } = await InsForgeAPI.luckyLoser(tid); setTournaments(t); setMatches(m); showT("Places vides remplies !"); } catch (e) { showT("Erreur", "error"); } }}
                         goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
                     : <div className="animate-enter space-y-6">
                         <h2 className="text-xl font-heading font-bold">Sélectionnez un tableau ({selectedYear})</h2>
