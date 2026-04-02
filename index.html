@@ -190,17 +190,28 @@
             },
             getMatches: async () => (await db("matches?order=round,index")).map(mapMatch),
             updateMatch: async (matchData) => {
-                await db(`matches?id=eq.${matchData.id}`, "PATCH", { p1_ids: matchData.p1Ids, p2_ids: matchData.p2Ids, scores: matchData.scores, winner_id: matchData.winnerId, status: matchData.winnerId ? 'completed' : 'pending', date: matchData.date || '', time: matchData.time || '', court: matchData.court || '' });
-                if (matchData.winnerId) {
-                    const winners = matchData.winnerId === 'p1' ? matchData.p1Ids : matchData.p2Ids;
+                const isBye = matchData.p1Ids.length === 0 || matchData.p2Ids.length === 0;
+                const nextStatus = matchData.winnerId ? 'completed' : (isBye ? 'bye' : 'pending');
+                await db(`matches?id=eq.${matchData.id}`, "PATCH", { p1_ids: matchData.p1Ids, p2_ids: matchData.p2Ids, scores: matchData.scores, winner_id: matchData.winnerId, status: nextStatus, date: matchData.date || '', time: matchData.time || '', court: matchData.court || '' });
+                let advanceIds = null;
+                if (matchData.winnerId) advanceIds = matchData.winnerId === 'p1' ? matchData.p1Ids : matchData.p2Ids;
+                else if (isBye) advanceIds = matchData.p1Ids.length > 0 ? matchData.p1Ids : (matchData.p2Ids.length > 0 ? matchData.p2Ids : []);
+
+                if (advanceIds && advanceIds.length > 0) {
                     const allM = (await db(`matches?tournament_id=eq.${matchData.tournamentId}`)).map(mapMatch);
                     const nextM = allM.find(m => m.round === matchData.round + 1 && m.index === Math.floor(matchData.index / 2));
-                    if (nextM) await db(`matches?id=eq.${nextM.id}`, "PATCH", { [matchData.index % 2 === 0 ? 'p1_ids' : 'p2_ids']: winners });
+                    if (nextM) await db(`matches?id=eq.${nextM.id}`, "PATCH", { [matchData.index % 2 === 0 ? 'p1_ids' : 'p2_ids']: advanceIds });
                     const tr = await db(`tournaments?id=eq.${matchData.tournamentId}`);
                     if (tr[0] && matchData.round === Math.log2(tr[0].bracket_size) - 1)
                         await db(`tournaments?id=eq.${matchData.tournamentId}`, "PATCH", { status: 'completed' });
                 }
                 return InsForgeAPI.getMatches();
+            },
+            resetDraw: async (tournamentId) => {
+                const matches = await db(`matches?tournament_id=eq.${tournamentId}`);
+                await Promise.all(matches.map(m => db(`matches?id=eq.${m.id}`, "PATCH", { p1_ids: [], p2_ids: [], scores: [{ p1: 0, p2: 0 }, { p1: 0, p2: 0 }, { p1: 0, p2: 0 }], winner_id: null, status: 'pending', date: '', time: '', court: '' })));
+                await db(`tournaments?id=eq.${tournamentId}`, "PATCH", { status: 'draft' });
+                return { t: await InsForgeAPI.getTournaments(), m: await InsForgeAPI.getMatches() };
             },
             autoDraw: async (tournamentId, participants, type, bracketSize, playerRanks) => {
                 let units = type === 'Double' ? participants.reduce((acc, p, i) => (i % 2 === 0 ? [...acc, [p]] : (acc[acc.length - 1].push(p), acc)), []) : participants.map(p => [p]);
@@ -470,7 +481,7 @@
             );
         };
 
-        const BracketView = ({ tournament, matches, players, ranks, isAdmin, onMatchUpdate, onDraw, goBack, onOpenStats }) => {
+        const BracketView = ({ tournament, matches, players, ranks, isAdmin, onMatchUpdate, onDraw, onResetDraw, goBack, onOpenStats }) => {
             const [editMatch, setEditMatch] = useState(null);
             const allR0Units = useMemo(() => {
                 const units = [];
@@ -492,7 +503,10 @@
                 <div className="animate-enter">
                     <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-6">
                         <div className="flex items-center gap-4"><Button variant="secondary" onClick={goBack}>Retour</Button><h2 className="text-xl font-heading font-bold">{tournament.name}</h2></div>
-                        {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage</Button>}
+                        <div className="flex items-center gap-2">
+                            {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage</Button>}
+                            {tournament.status !== 'draft' && isAdmin && <button onClick={() => { if(window.confirm("Êtes-vous sûr de vouloir vider ce tableau et recommencer à zéro ?")) onResetDraw(tournament.id); }} className="flex items-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-bold py-2 px-3 rounded-xl transition-all text-xs border border-red-200 shadow-sm"><Icons.Trash /> Vider Tableau</button>}
+                        </div>
                     </div>
                     {tournament.status !== 'draft' && (
                         <div className="flex gap-8 overflow-x-auto pb-10" style={{ minHeight: '600px' }}>
@@ -507,19 +521,20 @@
                                                 return (
                                                     <div key={mIdx} className="w-full relative flex-1 flex items-center justify-center py-2">
                                                         {m ? (
-                                                            <div onClick={() => { if (isAdmin) setEditMatch({ ...m }) }} className={`w-full bg-white rounded-xl shadow-sm border flex flex-col transition-all ${isAdmin ? 'cursor-pointer hover:border-[#D35400] hover:opacity-100 hover:grayscale-0' : ''} ${m.status === 'bye' ? 'opacity-60 grayscale' : ''}`}>
+                                                            <div onClick={() => { if (isAdmin) setEditMatch({ ...m }) }} className={`w-full bg-white rounded-xl shadow-sm border flex flex-col transition-all ${isAdmin ? 'cursor-pointer hover:border-[#D35400]' : ''}`}>
                                                                 {(m.date || m.time || m.court) && <div className="flex gap-1 bg-gray-50/80 rounded-t-xl px-2 py-1 items-center justify-center text-[8.5px] text-gray-500 font-bold uppercase border-b border-gray-100 flex-wrap">
                                                                     {m.date && <span className="text-blue-600">📅 {m.date.split('-').reverse().slice(0, 2).join('/')}</span>}
                                                                     {m.time && <span className="text-orange-600">⏰ {m.time}</span>}
                                                                     {m.court && <span className="text-green-700">🏟️ CT.{m.court}</span>}
                                                                 </div>}
-                                                                <div className="p-2">
+                                                                <div className="p-2 relative">
+                                                                    {m.status === 'bye' && <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-200 text-gray-600 font-bold px-3 py-1 rounded-full text-[9px] tracking-widest uppercase shadow-sm border border-gray-300 opacity-90 z-10 pointer-events-none">Match Bye</div>}
                                                                     {[{ ps: m.p1Ids, id: 'p1' }, { ps: m.p2Ids, id: 'p2' }].map((slot, i) => {
-                                                                        const isW = m.winnerId === slot.id;
+                                                                        const isW = m.winnerId === slot.id || (m.status === 'bye' && slot.ps && slot.ps.length > 0);
                                                                         const sW = m.scores.reduce((a, s) => a + (slot.id === 'p1' ? (s.p1 > s.p2 ? 1 : 0) : (s.p2 > s.p1 ? 1 : 0)), 0);
                                                                         return (
-                                                                            <div key={i} className={`flex justify-between items-center text-xs p-1.5 ${i === 0 ? 'border-b border-gray-100' : ''} ${isW ? 'bg-orange-50 font-bold text-[#D35400]' : ''}`}>
-                                                                                <div className="truncate flex items-center gap-1.5">{renderNames(slot.ps)}{isW && rIdx === Math.log2(tournament.bracketSize) - 1 && <span className="text-yellow-500 text-[10px]">🏆</span>}</div>
+                                                                            <div key={i} className={`flex justify-between items-center text-xs p-1.5 ${i === 0 ? 'border-b border-gray-100' : ''} ${isW ? 'bg-orange-50 font-bold text-[#D35400]' : ''} ${m.status === 'bye' && (!slot.ps || slot.ps.length === 0) ? 'opacity-30' : ''}`}>
+                                                                                <div className="truncate flex items-center gap-1.5">{renderNames(slot.ps)}{m.winnerId === slot.id && rIdx === Math.log2(tournament.bracketSize) - 1 && <span className="text-yellow-500 text-[10px]">🏆</span>}</div>
                                                                                 {m.status !== 'bye' && <div className="flex items-center gap-1.5 ml-2 shrink-0">
                                                                                     <div className="flex gap-1">{m.scores.map((s, idx) => {
                                                                                         if (s.p1 === 0 && s.p2 === 0 && m.scores.every(x => x.p1 === 0 && x.p2 === 0)) return null;
@@ -746,6 +761,7 @@
                     <BracketView tournament={tournaments.find(t => t.id === viewTourney)} matches={matches} players={players} ranks={buildRanks()} isAdmin={isAdmin}
                         onMatchUpdate={async m => { try { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); const nt = await InsForgeAPI.getTournaments(); setTournaments(nt); showT("Score sauvé"); } catch (e) { showT("Erreur", "error"); } }}
                         onDraw={async (tid, parts, type, size, rks) => { try { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); } catch (e) { showT("Erreur génération", "error"); } }}
+                        onResetDraw={async tid => { try { const { t, m } = await InsForgeAPI.resetDraw(tid); setTournaments(t); setMatches(m); showT("Tableau vidé !"); } catch (e) { showT("Erreur", "error"); } }}
                         goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
                     : <div className="animate-enter space-y-6">
                         <h2 className="text-xl font-heading font-bold">Sélectionnez un tableau ({selectedYear})</h2>
@@ -763,7 +779,7 @@
 
             return (
                 <div className="flex flex-col md:flex-row min-h-screen">
-                    <aside className="w-full md:w-64 bg-[#0B3D2B] text-white shadow-xl z-20 sticky top-0 md:h-screen flex flex-col">
+                    <aside className="shrink-0 w-full md:w-64 bg-[#0B3D2B] text-white shadow-xl z-20 sticky top-0 md:h-screen flex flex-col">
                         <div className="p-6 flex items-center justify-between border-b border-white/10">
                             <div className="flex items-center gap-3">
                                 <div className="bg-[#D35400] p-2 rounded-lg"><Icons.Trophy /></div>
@@ -782,7 +798,7 @@
                             </select>
                         </div>
                     </aside>
-                    <main className="flex-1 p-4 md:p-8 w-full max-w-7xl mx-auto">{tViews[activeTab]}</main>
+                    <main className="flex-1 p-4 md:p-8 w-full max-w-7xl mx-auto min-w-0">{tViews[activeTab]}</main>
                     {statsPlayer && <PlayerStatsModal player={statsPlayer} allMatches={matches} tournaments={tournaments} onClose={() => setStatsPlayer(null)} />}
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} duration={toast.duration} />}
                     <Modal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} title="Accès Organisateur">
