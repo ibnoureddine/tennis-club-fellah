@@ -611,9 +611,9 @@
                             )}
                         </div>
                     )}
-                    <Modal isOpen={!!editMatch} onClose={() => setEditMatch(null)} title={editMatch?.round === 0 ? "Ajustement & Arbitrage" : "Arbitrage - Enregistrement Score"}>
+                    <Modal isOpen={!!editMatch} onClose={() => setEditMatch(null)} title={editMatch?.round === 0 ? "Ajustement & Arbitrage (v1.1)" : "Arbitrage - Enregistrement Score"}>
                         {editMatch && <div className="space-y-6">
-                            {isAdmin && editMatch.round === 0 && (
+                            {editMatch.round === 0 && (
                                 <div className="p-3 bg-orange-50/50 border border-orange-100 rounded-xl">
                                     <p className="text-[10px] font-bold text-[#D35400] uppercase tracking-wider mb-3">Ajustement Manuel du Tirage</p>
                                     <div className="space-y-2">
