@@ -488,8 +488,8 @@
                 if (!tournament || !tournament.participantIds) return units;
                 const parts = tournament.participantIds.map(id => players.find(p => p.id === id)).filter(Boolean);
                 if (tournament.type === 'Double') {
-                    for(let i = 0; i < parts.length; i += 2) {
-                        if (parts[i+1]) units.push({ id: `u-${i}`, ps: [parts[i].id, parts[i+1].id] });
+                    for (let i = 0; i < parts.length; i += 2) {
+                        if (parts[i + 1]) units.push({ id: `u-${i}`, ps: [parts[i].id, parts[i + 1].id] });
                         else units.push({ id: `u-${i}`, ps: [parts[i].id] });
                     }
                 } else {
@@ -510,7 +510,7 @@
                         <div className="flex items-center gap-4"><Button variant="secondary" onClick={goBack}>Retour</Button><h2 className="text-xl font-heading font-bold">{tournament.name}</h2></div>
                         <div className="flex items-center gap-3 shrink-0">
                             {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage Auto</Button>}
-                            {isAdmin && <button onClick={() => { if(window.confirm("Êtes-vous sûr de vouloir tout vider (y compris la saisie manuelle) et remettre à zéro ?")) onResetDraw(tournament.id); }} className="flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 font-bold py-2 px-4 rounded-xl transition-all text-sm border-2 border-red-700 shadow-md whitespace-nowrap z-50 relative"><Icons.Trash /> Vider le Tableau</button>}
+                            {isAdmin && <button onClick={() => { if (window.confirm("Êtes-vous sûr de vouloir tout vider (y compris la saisie manuelle) et remettre à zéro ?")) onResetDraw(tournament.id); }} className="flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 font-bold py-2 px-4 rounded-xl transition-all text-sm border-2 border-red-700 shadow-md whitespace-nowrap z-50 relative"><Icons.Trash /> Vider le Tableau</button>}
                         </div>
                     </div>
                     {(
@@ -594,8 +594,8 @@
                                                                 <path fill="url(#gold-trophy)" stroke="#78350F" strokeWidth="0.5" d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
                                                                 <path fill="url(#base-silver)" stroke="#374151" strokeWidth="0.5" d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22h10c0-1.76-.85-3.25-1.97-4.04-.5-.23-.97-.66-.97-1.21v-2.34" />
                                                                 <circle cx="12" cy="7" r="3.2" fill="#BEF264" stroke="#4D7C0F" strokeWidth="0.5" />
-                                                                <path d="M9.8 4.6a3 3 0 0 0 0 4.8" stroke="#4D7C0F" strokeWidth="0.5" fill="none" strokeOpacity="1"/>
-                                                                <path d="M14.2 4.6a3 3 0 0 1 0 4.8" stroke="#4D7C0F" strokeWidth="0.5" fill="none" strokeOpacity="1"/>
+                                                                <path d="M9.8 4.6a3 3 0 0 0 0 4.8" stroke="#4D7C0F" strokeWidth="0.5" fill="none" strokeOpacity="1" />
+                                                                <path d="M14.2 4.6a3 3 0 0 1 0 4.8" stroke="#4D7C0F" strokeWidth="0.5" fill="none" strokeOpacity="1" />
                                                             </svg>
                                                         </div>
                                                         <div className="text-center w-full">
@@ -613,7 +613,7 @@
                     )}
                     <Modal isOpen={!!editMatch} onClose={() => setEditMatch(null)} title={editMatch?.round === 0 ? "Ajustement & Arbitrage" : "Arbitrage - Enregistrement Score"}>
                         {editMatch && <div className="space-y-6">
-                            {isAdmin && editMatch.round === 0 && !editMatch.winnerId && (
+                            {isAdmin && editMatch.round === 0 && (
                                 <div className="p-3 bg-orange-50/50 border border-orange-100 rounded-xl">
                                     <p className="text-[10px] font-bold text-[#D35400] uppercase tracking-wider mb-3">Ajustement Manuel du Tirage</p>
                                     <div className="space-y-2">
