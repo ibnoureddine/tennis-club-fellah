@@ -541,9 +541,11 @@
                                     </div>
                                 );
                             })}
-                            {tournament.status === 'completed' && (
+                            {(tournament.status === 'completed' || tMatches.find(m => m.round === Math.log2(tournament.bracketSize) - 1 && m.index === 0)?.winnerId) && (
                                 <div className="w-56 flex flex-col relative shrink-0">
-                                    <div className="text-center mb-4 shrink-0"><span className="bg-yellow-500 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase">Vainqueur</span></div>
+                                    <div className="text-center mb-4 shrink-0">
+                                        <span className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white px-4 py-1.5 rounded-full text-[11px] font-extrabold uppercase shadow-md border border-yellow-300">🥇 Grand Vainqueur</span>
+                                    </div>
                                     <div className="flex-1 flex flex-col w-full">
                                         <div className="w-full relative flex-1 flex items-center justify-center py-2">
                                             {(() => {
@@ -551,11 +553,33 @@
                                                 const fm = tMatches.find(m => m.round === fr && m.index === 0);
                                                 const wIds = fm?.winnerId === 'p1' ? fm.p1Ids : (fm?.winnerId === 'p2' ? fm.p2Ids : null);
                                                 return wIds && wIds.length > 0 ? (
-                                                    <div className="w-full bg-gradient-to-br from-[#0B3D2B] to-[#082a1d] rounded-2xl shadow-xl border-2 border-yellow-500/50 p-6 flex flex-col items-center justify-center gap-3 group">
-                                                        <span className="text-5xl drop-shadow-lg group-hover:scale-110 transition-transform">🏆</span>
+                                                    <div className="w-full bg-gradient-to-br from-[#0B3D2B] via-[#0f4b36] to-[#082a1d] rounded-2xl shadow-2xl border-2 border-yellow-400 p-6 flex flex-col items-center justify-center gap-4 group transform transition-all hover:scale-105 hover:shadow-[0_10px_25px_rgba(250,204,21,0.2)]">
+                                                        <div className="relative">
+                                                            <svg width="76" height="76" viewBox="0 0 24 24" fill="none" className="drop-shadow-[0_4px_8px_rgba(250,204,21,0.4)] group-hover:rotate-6 transition-transform duration-300">
+                                                                <defs>
+                                                                    <linearGradient id="gold-trophy" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                                        <stop offset="0%" stopColor="#FEF08A" />
+                                                                        <stop offset="30%" stopColor="#FBBF24" />
+                                                                        <stop offset="70%" stopColor="#D97706" />
+                                                                        <stop offset="100%" stopColor="#92400E" />
+                                                                    </linearGradient>
+                                                                    <linearGradient id="base-silver" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                                        <stop offset="0%" stopColor="#D1D5DB" />
+                                                                        <stop offset="100%" stopColor="#4B5563" />
+                                                                    </linearGradient>
+                                                                </defs>
+                                                                <path fill="url(#gold-trophy)" stroke="#78350F" strokeWidth="0.5" d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                                                                <path fill="url(#gold-trophy)" stroke="#78350F" strokeWidth="0.5" d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                                                                <path fill="url(#gold-trophy)" stroke="#78350F" strokeWidth="0.5" d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+                                                                <path fill="url(#base-silver)" stroke="#374151" strokeWidth="0.5" d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22h10c0-1.76-.85-3.25-1.97-4.04-.5-.23-.97-.66-.97-1.21v-2.34" />
+                                                                <circle cx="12" cy="7" r="3.2" fill="#BEF264" stroke="#4D7C0F" strokeWidth="0.5" />
+                                                                <path d="M9.8 4.6a3 3 0 0 0 0 4.8" stroke="#4D7C0F" strokeWidth="0.5" fill="none" strokeOpacity="1"/>
+                                                                <path d="M14.2 4.6a3 3 0 0 1 0 4.8" stroke="#4D7C0F" strokeWidth="0.5" fill="none" strokeOpacity="1"/>
+                                                            </svg>
+                                                        </div>
                                                         <div className="text-center w-full">
-                                                            <div className="text-yellow-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-1">Champion</div>
-                                                            <div className="text-white font-heading text-lg font-black tracking-wide break-words">{renderNames(wIds)}</div>
+                                                            <div className="text-yellow-400 font-bold text-[11px] uppercase tracking-[0.25em] mb-1.5 drop-shadow">Champion</div>
+                                                            <div className="text-white font-heading text-[22px] leading-tight font-black tracking-wide break-words drop-shadow-md">{renderNames(wIds)}</div>
                                                         </div>
                                                     </div>
                                                 ) : null;
@@ -719,7 +743,7 @@
                     onSelectTourney={id => { setViewTourney(id); setActiveTab('brackets'); }} />,
                 brackets: viewTourney ?
                     <BracketView tournament={tournaments.find(t => t.id === viewTourney)} matches={matches} players={players} ranks={buildRanks()} isAdmin={isAdmin}
-                        onMatchUpdate={async m => { try { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); showT("Score sauvé"); } catch (e) { showT("Erreur", "error"); } }}
+                        onMatchUpdate={async m => { try { const nm = await InsForgeAPI.updateMatch(m); setMatches(nm); const nt = await InsForgeAPI.getTournaments(); setTournaments(nt); showT("Score sauvé"); } catch (e) { showT("Erreur", "error"); } }}
                         onDraw={async (tid, parts, type, size, rks) => { try { const { t, m } = await InsForgeAPI.autoDraw(tid, parts, type, size, rks); setTournaments(t); setMatches(m); showT("Arbre généré"); } catch (e) { showT("Erreur génération", "error"); } }}
                         goBack={() => setViewTourney(null)} onOpenStats={setStatsPlayer} />
                     : <div className="animate-enter space-y-6">
