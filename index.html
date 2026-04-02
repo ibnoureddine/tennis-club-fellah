@@ -485,13 +485,18 @@
             const [editMatch, setEditMatch] = useState(null);
             const allR0Units = useMemo(() => {
                 const units = [];
-                if (!tournament || !matches) return units;
-                matches.filter(m => m.tournamentId === tournament.id && m.round === 0).forEach(m => {
-                    if (m.p1Ids && m.p1Ids.length > 0) units.push({ id: `p1-${m.id}`, ps: m.p1Ids });
-                    if (m.p2Ids && m.p2Ids.length > 0) units.push({ id: `p2-${m.id}`, ps: m.p2Ids });
-                });
+                if (!tournament || !tournament.participantIds) return units;
+                const parts = tournament.participantIds.map(id => players.find(p => p.id === id)).filter(Boolean);
+                if (tournament.type === 'Double') {
+                    for(let i = 0; i < parts.length; i += 2) {
+                        if (parts[i+1]) units.push({ id: `u-${i}`, ps: [parts[i].id, parts[i+1].id] });
+                        else units.push({ id: `u-${i}`, ps: [parts[i].id] });
+                    }
+                } else {
+                    parts.forEach((p, i) => units.push({ id: `u-${i}`, ps: [p.id] }));
+                }
                 return units;
-            }, [tournament, matches]);
+            }, [tournament, players]);
             if (!tournament) return null;
             const tMatches = matches.filter(m => m.tournamentId === tournament.id);
             const handleUpdate = () => { onMatchUpdate(editMatch); setEditMatch(null); };
@@ -504,11 +509,11 @@
                     <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm mb-6">
                         <div className="flex items-center gap-4"><Button variant="secondary" onClick={goBack}>Retour</Button><h2 className="text-xl font-heading font-bold">{tournament.name}</h2></div>
                         <div className="flex items-center gap-3 shrink-0">
-                            {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage</Button>}
-                            {tournament.status !== 'draft' && isAdmin && <button onClick={() => { if(window.confirm("Êtes-vous sûr de vouloir vider ce tableau et recommencer à zéro ?")) onResetDraw(tournament.id); }} className="flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 font-bold py-2 px-4 rounded-xl transition-all text-sm border-2 border-red-700 shadow-md whitespace-nowrap z-50 relative"><Icons.Trash /> Vider le Tableau</button>}
+                            {tournament.status === 'draft' && isAdmin && <Button icon={Icons.Shuffle} onClick={() => onDraw(tournament.id, tournament.participantIds, tournament.type, tournament.bracketSize, ranks)}>Tirage Auto</Button>}
+                            {isAdmin && <button onClick={() => { if(window.confirm("Êtes-vous sûr de vouloir tout vider (y compris la saisie manuelle) et remettre à zéro ?")) onResetDraw(tournament.id); }} className="flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 font-bold py-2 px-4 rounded-xl transition-all text-sm border-2 border-red-700 shadow-md whitespace-nowrap z-50 relative"><Icons.Trash /> Vider le Tableau</button>}
                         </div>
                     </div>
-                    {tournament.status !== 'draft' && (
+                    {(
                         <div className="flex gap-8 overflow-x-auto pb-10" style={{ minHeight: '600px' }}>
                             {Array.from({ length: Math.log2(tournament.bracketSize) }).map((_, rIdx) => {
                                 const mCount = tournament.bracketSize / Math.pow(2, rIdx + 1);
